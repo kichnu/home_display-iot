@@ -248,6 +248,8 @@ struct ParamDesc {
 };
 ```
 
+- **Listy punktów węzłów:** `docs/nodes/` (konwencje w `_konwencje.md`, po pliku na węzeł) — źródło
+  tabel `ParamDesc`.
 - **Flaga `panel`:** do schematu panelu trafiają tylko parametry sterujące i bieżące odczyty.
   Harmonogramy i konfiguracja zaawansowana zostają w web GUI.
 - **Discovery:** panel trzyma schematy w LittleFS, kluczem jest węzeł + `schema_hash`. Przy zawężonym
