@@ -75,8 +75,10 @@ błędów, log zdarzeń czujnika.
 
 ## Do ustalenia
 
-- [ ] Pływak zbiornika RO wyłączony w kompilacji (`RESERVE_FLOAT_ENABLED 0`), więc `isReserveEmpty()`
-      nigdy nie zatrzyma pompy — alarm `LOW_RESERVOIR` dziś nie wystąpi. Włączyć pływak czy oprzeć stop na ToF?
+- [x] ~~Pływak zbiornika RO czy stop na ToF?~~ (2026-10-25) Pływak usuwany z kodu. W ustawieniach dochodzi
+      poziom alarmowy (stop) poniżej zwiększonego poziomu rezerwy. Realizacja i audyt dolewki:
+      `top_off_water_new-iot/docs/AUDYT_I_PLAN_REZERWY_TOF_1.0.md`. Ta lista zostanie zaktualizowana
+      po raporcie zwrotnym (sekcja 7 tamtego pliku).
 - [ ] Czy ręczne porcje liczą się do limitu dobowego? W `pump_controller.cpp` nie ma sprawdzenia limitu.
 - [ ] `daily_limit` na panelu czy tylko web? (zmiana rzadka; argument za panelem: podniesienie po podmianie wody)
 - [ ] Ręczna porcja: safety 1 wystarczy (150 ml, limit kolejki), czy 2?
