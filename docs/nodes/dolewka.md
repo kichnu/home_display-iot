@@ -79,6 +79,8 @@ błędów, log zdarzeń czujnika.
       poziom alarmowy (stop) poniżej zwiększonego poziomu rezerwy. Realizacja i audyt dolewki:
       `top_off_water_new-iot/docs/AUDYT_I_PLAN_REZERWY_TOF_1.0.md`. Ta lista zostanie zaktualizowana
       po raporcie zwrotnym (sekcja 7 tamtego pliku).
+      Raport zwrotny (2026-10-31, firmware `df4a2dc`): `dolewka_raport_2026-10-31.md` — lista do
+      aktualizacji według niego.
 - [ ] Czy ręczne porcje liczą się do limitu dobowego? W `pump_controller.cpp` nie ma sprawdzenia limitu.
 - [ ] `daily_limit` na panelu czy tylko web? (zmiana rzadka; argument za panelem: podniesienie po podmianie wody)
 - [ ] Ręczna porcja: safety 1 wystarczy (150 ml, limit kolejki), czy 2?
