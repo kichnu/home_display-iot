@@ -339,7 +339,7 @@ Kluczowe ustawienia RGB i PSRAM wymagają własnego sdkconfig.
 | Ekspander | CH422G | reset LCD i dotyku, podświetlenie on/off, DI (konflikt kierunku) |
 | GUI | LVGL 9.x | `lv_subject`; dema Waveshare (LVGL 8) tylko do inicjalizacji sprzętu |
 | Edytor | EEZ Studio (open source), opcjonalnie | ekran główny i style; strony węzłów generowane w kodzie |
-| Fonty | `lv_font_conv`: U+0020–007F, U+0100–017F, °µ | polskie znaki |
+| Fonty | Noto Sans TTF we flashu + LVGL TinyTTF (2026-11-12) | pełne polskie znaki bez konwertera (uwaga: Ó/ó to U+00D3/U+00F3, poza Latin Extended-A); ikony `LV_SYMBOL_*` z wbudowanego Montserrat jako fallback |
 | Radio | ESP-NOW v1 | kanał routera, obniżona moc TX |
 | Kryptografia | mbedTLS AES-GCM | akceleracja sprzętowa S3 |
 | Pamięć | NVS, LittleFS | cache schematów, klucze, `last_seq` |
@@ -355,7 +355,7 @@ Największe ryzyka to zakłócenia obrazu RGB przy zapisie do flash oraz duplika
 | Obraz pływa lub miga przy zapisie NVS/LittleFS/OTA | zapis wyłącza cache, framebuffer czytany z PSRAM | bounce buffer w SRAM, kod i rodata z PSRAM, rzadkie zapisy |
 | Miganie elementów przy częstym przerysowaniu | rysowanie wprost w wyświetlanym framebufferze | LVGL z 2 fb / DIRECT; bez LVGL bufor poza ekranem + kopia (sprawdzone w teście) |
 | Zawieszenia lub crash UI | wywołania `lv_*` z callbacku ESP-NOW (task Wi-Fi) | `recv_cb` → `xQueueSend` → task UI |
-| Puste kwadraty zamiast ą, ę, ł | fonty Montserrat bez Latin Extended-A | własne fonty z `lv_font_conv` |
+| Puste kwadraty zamiast ą, ę, ł | fonty Montserrat bez Latin Extended-A | TinyTTF z Noto Sans (cały zestaw znaków fontu) |
 | Brak ściemniania | podświetlenie przez CH422G → AP3032 CTRL, tylko on/off (potwierdzone na schemacie) | ciemny wygaszacz + wyłączenie; ewentualnie przeróbka (pady FB) |
 | Błysk podświetlenia / reset dotyku przy odczycie DI | wspólny kierunek IO0–7 w CH422G | krótki odczyt (~0,45 ms) — sprawdzone: bez błysku i bez resetu |
 | Fałszywe dotknięcia | mokre palce, zakłócenia zasilaczy pomp | debounce gestów, blokada ekranu, filtr zasilania |

@@ -1,11 +1,11 @@
-# ESP32-S3-Touch-LCD-4.3B — display & touch bring-up test
+# home_display-iot — aquarium touch panel
 
-PlatformIO firmware for a first hardware check of the
+Central touch panel for the aquarium nodes, on the
 [Waveshare ESP32-S3-Touch-LCD-4.3B](https://docs.waveshare.com/ESP32-S3-Touch-LCD-4.3B)
-(800x480 RGB565 ST7262 panel, GT911 capacitive touch, CH422G IO expander).
+(800x480 RGB565 ST7262, GT911 touch, CH422G IO expander). Design notes (Polish):
+`Panel dotykowy ESP-NOW — ustalenia i stack.md`, rollout plan: `docs/PLAN_WDROZENIA.md`.
 
-No external libraries: the panel is driven with ESP-IDF `esp_lcd` (RGB, PSRAM framebuffer +
-bounce buffers); GT911 and CH422G are accessed directly over `Wire`.
+Current state: stage 1 — LVGL foundation with a demo screen, no radio yet.
 
 ## Build / flash
 
@@ -17,21 +17,30 @@ pio device monitor
 Requires the pioarduino platform (Arduino core 3.x / ESP-IDF 5.x) — set in `platformio.ini`.
 Serial goes over native USB (USB-CDC on boot). If the port does not show up, hold BOOT and press RESET.
 
-## What it does
+## Stack
 
-1. Serial: chip/PSRAM info, I2C scan, CH422G and GT911 detection (address, product ID, firmware,
-   configured resolution).
-2. Test patterns (tap, Serial `n`, or 5 s timeout to advance):
-   solid red/green/blue/white/black, color bars, R/G/B/gray gradients, data-line bit walk
-   (one RGB565 bit per stripe — a black stripe means a dead line), geometry (1 px border,
-   50 px grid, circles, 1 px checkerboard), info screen.
-3. Touch test: multi-touch paint (up to 5 points, colour per track ID), live coordinates in the
-   header, corner/centre targets to verify axis mapping, `CLEAR` and `PATTERNS` buttons.
+- Display: ESP-IDF `esp_lcd` RGB panel, two framebuffers in PSRAM + bounce buffers in SRAM.
+  LVGL renders in `DIRECT` mode into the hidden framebuffer; the flush swaps buffers and waits
+  for the end of the frame in progress (`src/lcd.cpp`, `src/ui/lvgl_port.cpp`).
+- GUI: LVGL 9.2.2 (`lib_deps`), configuration in `include/lv_conf.h`.
+- Touch: own GT911 driver (`src/gt911.cpp`) as an LVGL pointer input.
+- Fonts: Noto Sans Regular/Bold TTF embedded in flash (`src/ui/fonts.S`, `assets/fonts/`, OFL)
+  and rendered at runtime by LVGL TinyTTF — full Polish character set without a font converter.
+  LVGL symbol icons come from the built-in Montserrat fonts set as fallback.
+- Backlight is on/off only (CH422G EXIO2). With the backlight off the first touch only wakes the
+  screen and is not passed to the UI.
 
-Serial commands: `n` next pattern, `p` patterns, `t` touch screen, `b` toggle backlight, `s` I2C scan,
-`d` / `f` DI0/DI1 read test every 200 / 20 ms with the backlight off (any key or a touch ends it).
-CH422G has one IO direction for all lines, so each DI read briefly releases DISP (pulled up on the
-board) - the test shows whether that flashes the backlight.
+## Demo screen (stage 1)
+
+- "Lampy (demo)" card: Auto / Noc / Test mode buttons and "Program…" with a confirmation modal
+  (mock data, logged on Serial).
+- "Test fontów" card: Polish glyphs at three sizes, spinner animation (tearing / smoothness check).
+- Bottom bar: FPS / CPU overlay switch, "Wygaś ekran" (backlight off, touch to wake).
+
+Serial commands: `i` memory info, `b` toggle backlight.
+
+The original bring-up test (patterns, touch paint, DI read test) is in git history (`27efbea`) and
+in `~/Dokumenty/My_apps/TOOLS/test_ESP32-S3-Touch-LCD-4.3B/`.
 
 ## Hardware notes
 
