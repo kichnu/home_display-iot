@@ -210,8 +210,14 @@ szyfrowanie ESP-NOW. Obniżona moc TX ogranicza ekspozycję poza budynkiem, ale 
 
 - **Dlaczego AEAD w aplikacji:** natywne szyfrowanie nie obsługuje broadcastu, ma niski limit
   szyfrowanych peerów, a jego zmiana wymaga sdkconfig.
-- **Klucze:** parowy dla każdej pary węzeł–panel oraz grupowy do broadcastu (czas). Przechowywane
-  jak w DOLEWCE/DOZOWNIKU: FRAM, AES-256.
+- **Klucze:** parowy dla każdej pary węzeł–panel. Przechowywane jak w DOLEWCE/DOZOWNIKU: FRAM, AES-256
+  (lampy bez FRAM: NVS).
+- **Parowanie (2026-11-12, propozycja techniczna).** Inicjowane i potwierdzane wyłącznie na ekranie
+  panelu, bez przycisków na węzłach. Panel pokazuje wykryte, niesparowane węzły, a dotknięcie „Paruj”
+  uruchamia wymianę ECDH (X25519, mbedTLS). Ramki wymiany uwierzytelnia klucz grupowy z hasła Wi-Fi
+  (jak dziś HMAC lamp), więc sparować może tylko urządzenie znające hasło sieci. Wynik to klucz parowy
+  zapisany na obu stronach. Usunięcie parowania odbywa się na panelu, a węzeł ma reset parowania w web
+  GUI. Lampy w etapie 1 nie wymagają parowania, bo panel używa ich istniejącego klucza grupowego.
 - **Nonce = `src‖seq`, nigdy powtórzony.** Na węzłach z FRAM `seq` zapisywany przy każdej ramce
   (wytrzymałość ~10¹⁴ cykli). Bez FRAM (lampy) rezerwacja bloków w NVS, np. `seq += 1024` przy boocie.
 - **Replay:** odbiorca odrzuca `seq ≤ last_seq[src]`. Po restarcie panelu challenge-response: losowy
@@ -379,7 +385,8 @@ w DOLEWCE → generator stron w symulatorze → bring-up płytki → integracja 
       (2026-11-12): kanał z asocjacji, NTP, ArduinoOTA przy rozwoju. Hasło Wi-Fi i tak potrzebne do klucza HMAC lamp.
 - [x] ~~Źródło czasu?~~ NTP panelu, rezerwowo UTC z heartbeatów węzłów; RTC panelu nieużywany (2026-11-12).
 - [ ] Docelowy kanał 2,4 GHz po skanie otoczenia.
-- [ ] Provisioning kluczy: wpisywane przy buildzie czy parowanie z panelu?
+- [x] ~~Provisioning kluczy: wpisywane przy buildzie czy parowanie z panelu?~~ Parowanie z panelu,
+      bez przycisków na węzłach (2026-11-12) — patrz „Bezpieczeństwo” → „Parowanie”.
 - [ ] OTA węzłów: przez Wi-Fi z routera (jak dziś ArduinoOTA) czy z karty SD panelu?
 - [x] ~~Kontaktron drzwi: DI0 czy złącze I2C?~~ DI0 — krótki odczyt nie błyska (2026-10-23). Przy
       panelu poza szafką kontaktron opcjonalny; wybudzanie dotykiem i alarmem.
