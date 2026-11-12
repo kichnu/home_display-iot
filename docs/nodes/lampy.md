@@ -36,7 +36,7 @@ szacowaną mocą. Biblioteka do 24 programów w FRAM. Lampy synchronizują progr
 | 18 | `ramp_active` | Rampa | ST | BOOL | RO | | | web | | zm | później | |
 | 19 | `fan_pct` | Wentylator | RO | INT | RO | % | | web | | zm | później | |
 | 20 | `active_program` | Program | ST | STRING | RO | | | tak | | zm | MVP | `active_name` |
-| 21 | `program_select` | Wybór programu | MD | ENUM (dynamiczny) | RW | | | ? | 1 | zm | później | lista z `/api/programs`; zmiana listy = nowy `schema_hash` |
+| 21 | `program_select` | Wybór programu | MD | ENUM (dynamiczny) | RW | | | tak | 1 | zm | MVP | lista z `/api/programs`; zmiana listy = nowy `schema_hash` |
 | 22 | `mode_all` | Tryb na wszystkich | AC | ACTION | X | | | tak | 1 | | później | `/api/mode-all` — powiela tryb na drugą lampę |
 | 23 | `time_valid` | Czas OK | ST | BOOL | RO | | | diag | | zm | MVP | `time_valid`; fałsz = alarm |
 | 24 | `fram_ok` | FRAM | DG | BOOL | RO | | | diag | | zm | później | |
@@ -67,7 +67,9 @@ liczniki resetów (WDT / panic / brownout).
 
 ## Do ustalenia
 
-- [ ] Wybór programu na panelu (dynamiczny ENUM) czy tylko web? Lista programów zmienia się przy edycji.
-- [ ] Panel: osobny kafelek na lampę czy jeden kafelek „Lampy” z trybem dla grupy (`mode_all`)?
+- [x] ~~Wybór programu na panelu czy tylko web?~~ Na panelu, MVP (2026-11-12); lista z `FT_LIST` + nazwy
+      z nagłówka programu (chunk 0), aktywacja na wszystkich lampach (`docs/PLAN_WDROZENIA.md`).
+- [x] ~~Osobny kafelek na lampę czy jeden „Lampy”?~~ Jeden kafelek i ekran grupy; sterowanie grupowe,
+      lampy jako wiersze ze stanem (2026-11-12, „Nawigacja i układ ekranów”).
 - [ ] Timeout trybu testowego (na węźle) albo alarm `MANUAL_LEFT_ON` — który wariant i po ilu godzinach?
 - [ ] Migracja z HMAC na wspólną bibliotekę (już na liście otwartych kwestii panelu).

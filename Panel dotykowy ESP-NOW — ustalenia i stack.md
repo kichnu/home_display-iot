@@ -1,6 +1,13 @@
 # Panel dotykowy ESP-NOW — ustalenia i stack
 
-Wersja 1: 2026-10-18 · aktualizacja: 2026-10-23 (po uruchomieniu płytki i decyzji o routerze)
+Wersja 1: 2026-10-18 · aktualizacja: 2026-11-12 (nawigacja, start od lamp, czas i pamięć panelu)
+
+> **Zmiany 2026-11-12**
+> - Nowa sekcja: nawigacja i układ ekranów (ISA-101: per urządzenie, alarmy globalnie).
+> - Kolejność wdrożenia zmieniona: start od lamp, przez istniejący protokół ESP-NOW lamp.
+>   Szczegóły: `docs/PLAN_WDROZENIA.md`.
+> - Panel bez RTC i FRAM jako bloków krytycznych; panel łączy się z routerem jak węzły (NTP, kanał).
+>   Broadcast TIME z panelu usunięty z zakresu.
 
 > **Zmiany 2026-10-23**
 > - Decyzja: **węzły zostają połączone z routerem** (web GUI, NTP, brama VPS). ESP-NOW pracuje na
@@ -39,9 +46,18 @@ Ruch panel–węzeł idzie przez ESP-NOW bezpośrednio radio–radio. Odległoś
   sobą (istniejący protokół, patrz „Komunikacja radiowa”).
 - **Autonomia węzłów.** Harmonogramy, limity dobowe i safety manager działają lokalnie na węźle.
   Utrata panelu oznacza utratę UI, nie sterowania.
-- **Czas.** Węzły mają NTP przez router. Propozycja: panel bierze czas z heartbeatów węzłów (lampy
-  już rozsyłają UTC z oceną jakości), a jego RTC jest rezerwą przy awarii routera/internetu.
-  Broadcast TIME z panelu tylko wtedy, gdy nikt nie ma świeżego NTP.
+- **Czas (2026-11-12).** Panel łączy się z routerem jak węzły i ma NTP. Bez NTP bierze UTC
+  z heartbeatów węzłów (`time_q = 2`). Panel nie steruje niczym zależnym od czasu: harmonogramy liczą
+  węzły z własnych RTC, a czas na panelu służy tylko do zegara i znaczników alarmów. Dlatego RTC panelu
+  (PCF85063) nie jest używany i nie jest blokiem krytycznym, a broadcast TIME z panelu wypada z zakresu.
+- **Pamięć trwała panelu (2026-11-12).** Bez FRAM. Panel przechowuje tylko ustawienia UI i cache
+  (nazwy programów, schematy) w NVS/LittleFS. Zapisy są rzadkie, bo zapis do flash zakłóca obraz RGB.
+  Utrata cache oznacza ponowne pobranie od węzłów, a nie utratę stanu procesu. Protokół lamp nie
+  potrzebuje trwałego `seq` (`boot_id` + `seq` w RAM). Przy migracji na AEAD `seq` panelu idzie
+  rezerwacją bloków w NVS (patrz „Bezpieczeństwo”).
+- **Bloki krytyczne panelu.** Panel nie zależy od RTC ani FRAM, więc reguła alarmu krytycznego nie
+  obejmuje tych bloków. Awarię panelu widać po tym, że ekran nie działa, a sterowanie zostaje na węzłach.
+  Utrata łączności z węzłem to alarm na panelu (brak heartbeatów).
 - **Panel tylko prosi.** Każdą komendę waliduje węzeł; panel nie ma uprawnień do omijania limitów.
 
 ```
@@ -64,7 +80,7 @@ najlepiej w wariancie -BOX z obudową.
 | Wyświetlacz | 4,3", 800×480, RGB565 (ST7262), dotyk GT911 (5 pkt) | ok. 217 ppi |
 | Podświetlenie | przetwornica AP3032, CTRL = DISP z CH422G EXIO2 | **tylko on/off** (patrz niżej) |
 | Zasilanie | USB-C 5 V lub DC 7–36 V, ~450 mA przy 5 V | szyna 12/24 V w szafce, osobna gałąź lub filtr LC |
-| RTC | PCF85063 (I2C 0x51, INT na IO6) + ogniwo (tylko ładowalne) | rezerwowe źródło czasu |
+| RTC | PCF85063 (I2C 0x51, INT na IO6) + ogniwo (tylko ładowalne) | nieużywany (2026-11-12, patrz „Czas”); ogniwa nie trzeba wkładać |
 | DI ×2 | izolowane (PC814), 5–36 V, NPN/PNP → CH422G EXIO0/EXIO5 | kontaktron drzwi — **konflikt z CH422G**, patrz niżej |
 | DO ×2 | open-drain (PC817), 5–36 V, maks. 450 mA/kanał, CH422G OC0/OC1 | buzzer lub lampka alarmu niezależna od ekranu |
 | CAN, RS485 | z przełączanymi terminatorami (CAN IO15/16, RS485 IO43/44) | rezerwa: przewodowy fallback dla węzła |
@@ -219,7 +235,7 @@ ESP-NOW v1 daje ok. 220 B na payload.
 | ACK | węzeł → panel | `cmd_id`, status, `actual_value` | węzeł może przyciąć wartość |
 | ARM / EXEC | panel → węzeł | komendy z safety 2 | EXEC ważny ≤ 5 s od ARM |
 | ALARM | węzeł → panel | kod, priorytet | budzi ekran panelu |
-| TIME | panel → broadcast, co ~30 s | czas z RTC | klucz grupowy; tylko gdy żaden węzeł nie ma świeżego NTP |
+| ~~TIME~~ | — | — | usunięte 2026-11-12: panel bez RTC, węzły mają własne RTC i NTP |
 
 - Setter z walidacją na węźle jest jedyną bramą do stanu; panel i web GUI nie mają osobnych ścieżek.
 - Limity dobowe (np. dozowania) egzekwuje węzeł, nie panel.
@@ -271,6 +287,40 @@ struct ParamDesc {
   węzła z `lv_tabview` po `group`. Strony tworzone przy wejściu i usuwane przy wyjściu; subjecty
   zostają w pamięci.
 
+## Nawigacja i układ ekranów
+
+Ustalenie 2026-11-12. Nawigacja idzie per urządzenie (węzeł lub grupa węzłów). Podział funkcjonalny
+(odczyt / sterowanie / błędy) obowiązuje wewnątrz ekranu węzła jako stałe strefy układu, a nie jako
+osobne ekrany. Alarmy to jedyna warstwa globalna.
+
+Dlaczego nie ekrany per funkcja: sterowanie bez kontekstu (zmiana nastawy bez widocznego skutku),
+więcej przejść „widzę problem → reaguję”, ryzyko pomyłki węzła na wspólnej liście nastaw.
+Dlaczego nie czysto per urządzenie: alarm P1 jednego węzła musi być widoczny z każdego ekranu (ISA-18.2).
+
+| Poziom | Ekran | Podział |
+|---|---|---|
+| L1 | Przegląd: kafelek na węzeł lub grupę (kolor `node_status`, 1–2 kluczowe wartości, licznik alarmów) | per urządzenie |
+| L2 | Ekran węzła / grupy | per urządzenie, wewnątrz strefy wg kategorii |
+| L3 | Szczegół instancji (kanał dozownika, pojedyncza lampa) | per instancja |
+| Globalnie | Pasek alarmów (zawsze widoczny) + lista alarmów P1→P3; wpis prowadzi do ekranu węzła | per funkcja |
+| L4 | Diagnostyka (wspólny profil ID 0–15) | web; ewentualnie jedna tabela wszystkich węzłów |
+
+Strefy ekranu L2, w tym samym miejscu dla każdego węzła:
+
+| Strefa | Kategorie | Zawartość |
+|---|---|---|
+| Nagłówek | ST | nazwa, `node_status`, stan łączności, alarmy tego węzła |
+| Odczyty | RO, ST | bieżące wartości procesowe |
+| Sterowanie | MD, SP, AC | tryby, nastawy, akcje (safety wg `_konwencje.md`) |
+
+Zasady:
+
+- Z L1 do każdej nastawy najwyżej 2 dotknięcia, z alarmu do jego węzła 1 dotknięcie.
+- Węzły synchronizowane między sobą (lampy) mają jeden kafelek i jeden ekran grupy. Sterowanie działa
+  na całej grupie, a stan poszczególnych członków jest widoczny jako wiersze. Rozjazd stanu to ostrzeżenie.
+- Akcje obejmujące kilka węzłów (np. przyszły „tryb karmienia / serwis”) to sceny: przycisk na L1, nie
+  w ekranie jednego z węzłów.
+
 ## Stack technologiczny
 
 Kluczowe ustawienia RGB i PSRAM wymagają własnego sdkconfig.
@@ -313,25 +363,21 @@ Największe ryzyka to zakłócenia obrazu RGB przy zapisie do flash oraz duplika
 
 ## Kolejność wdrożenia
 
-Najpierw protokół i radio, na końcu UI: warstwa protokołu jest najtrudniejsza do zmiany, UI najłatwiejsze.
+Zmienione 2026-11-12: start od lamp przez istniejący protokół ESP-NOW lamp, a wspólna biblioteka
+(AEAD, `ParamDesc` po radiu) dopiero po działającym panelu. Plan etapów, kryteria i testy:
+`docs/PLAN_WDROZENIA.md`.
 
-1. Wspólna biblioteka: ramka, AEAD, seq w FRAM/NVS, typy wiadomości.
-2. Plan kanałów: skan otoczenia, sztywny kanał na MikroTiku, panel na tym samym kanale; test
-   z restartem routera (przerwa w ramkach przy ponownym łączeniu węzłów).
-3. Tabela `ParamDesc` w DOLEWCE, serializacja schematu, hash.
-4. Generator stron i stany pending/stale w symulatorze SDL.
-5. Bring-up płytki: ~~RGB, GT911, CH422G, odczyt DI przy wygaszonym ekranie~~ (2026-10-23);
-   DI0 z napięciem z szyny, RTC, DO, ekran przy działającym ESP-NOW.
-6. ESP-NOW na płytce i integracja z DOLEWKĄ, potem DOZOWNIK i lampy.
+Poprzednia kolejność (2026-10-23), do wglądu: wspólna biblioteka → plan kanałów → `ParamDesc`
+w DOLEWCE → generator stron w symulatorze → bring-up płytki → integracja DOLEWKA, DOZOWNIK, lampy.
 
 ## Otwarte kwestie
 
 - [x] ~~Czy węzły zachowują połączenie z routerem?~~ Tak (2026-10-23) — kanał ESP-NOW = kanał AP.
 - [x] ~~Czy obecny firmware lamp wywołuje `WiFi.begin()`?~~ Tak (Wi-Fi STA + NTP + VPS) i zostaje.
 - [x] ~~Czy podświetlenie 4.3B obsługuje PWM?~~ Nie — tylko on/off przez CH422G (schemat: AP3032 CTRL).
-- [ ] Panel: tylko ustawiony kanał (bez asocjacji) czy połączenie z routerem jak węzły (NTP, ewentualnie
-      web GUI panelu)? Bez asocjacji panel musi znać kanał routera (stała w konfiguracji).
-- [ ] Źródło czasu: NTP z heartbeatów węzłów + RTC jako rezerwa (propozycja) czy RTC panelu jako główne?
+- [x] ~~Panel: tylko ustawiony kanał czy połączenie z routerem?~~ Połączenie z routerem jak węzły
+      (2026-11-12): kanał z asocjacji, NTP, ArduinoOTA przy rozwoju. Hasło Wi-Fi i tak potrzebne do klucza HMAC lamp.
+- [x] ~~Źródło czasu?~~ NTP panelu, rezerwowo UTC z heartbeatów węzłów; RTC panelu nieużywany (2026-11-12).
 - [ ] Docelowy kanał 2,4 GHz po skanie otoczenia.
 - [ ] Provisioning kluczy: wpisywane przy buildzie czy parowanie z panelu?
 - [ ] OTA węzłów: przez Wi-Fi z routera (jak dziś ArduinoOTA) czy z karty SD panelu?
