@@ -1,4 +1,4 @@
-// Touch panel firmware for Waveshare ESP32-S3-Touch-LCD-4.3B — stage 5: panel GUI with live lamp data (read only).
+// Touch panel firmware for Waveshare ESP32-S3-Touch-LCD-4.3B — stage 6: panel GUI with live lamp data and group control.
 //
 // Boot: I2C scan, CH422G (backlight off until the first frame), RGB panel with two PSRAM framebuffers, GT911,
 // LVGL 9 port (DIRECT mode, TinyTTF Noto fonts), Wi-Fi STA + NTP + ArduinoOTA, ESP-NOW listener of the lamps
@@ -71,7 +71,7 @@ void setup() {
     Serial.begin(115200);
     uint32_t t0 = millis();
     while (!Serial && millis() - t0 < 1500) delay(10);
-    Serial.println("\n=== home_display-iot " PANEL_FW_VERSION ": stage 5 (GUI, live lamp data) ===");
+    Serial.println("\n=== home_display-iot " PANEL_FW_VERSION ": stage 6 (GUI, lamp control) ===");
     Serial.printf("Chip %s rev %d, PSRAM %u B\n", ESP.getChipModel(), ESP.getChipRevision(), ESP.getPsramSize());
 
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, I2C_FREQ_HZ);

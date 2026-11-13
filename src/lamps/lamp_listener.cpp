@@ -10,6 +10,7 @@
 #include <sys/time.h>
 
 #include "../net/network.h"
+#include "lamp_internal.h"
 #include "../version.h"
 #include "wifi_secret.h"
 
@@ -42,6 +43,7 @@ uint32_t s_ownBootId = 0;  // our frames: random per boot, like the lamps
 uint32_t s_txSeq = 0;
 uint32_t s_lastCtrlHbMs = 0;
 bool s_wasConnected = false;
+uint32_t s_maxModeClock = 0;
 
 // Catalog fetch (one request at a time, source = one lamp)
 constexpr uint32_t CAT_LIST_TIMEOUT_MS = 3000;
@@ -124,6 +126,7 @@ void onHeartbeat(Lamp& l, const uint8_t* body, size_t blen) {
     l.hb = b;
     l.haveHb = true;
     l.hbHasModeClock = blen >= sizeof(HbBody);
+    if (l.hbHasModeClock && b.mode_clock > s_maxModeClock) s_maxModeClock = b.mode_clock;
     l.lastHbMs = millis();
     l.lastHbUtc = net::timeValid() || time(nullptr) >= UTC_VALID_MIN ? time(nullptr) : 0;
     l.hbCount++;
@@ -185,6 +188,7 @@ void handleFrame(const RxItem& it) {
             if (blen >= sizeof(ModeBody)) {
                 ModeBody b;
                 memcpy(&b, body, sizeof(b));
+                if (b.clock > s_maxModeClock) s_maxModeClock = b.clock;
                 Serial.printf("Lamps: %s FT_MODE %s clock %lu seq %lu ack %u\n", l.haveHb ? l.hb.name : "?",
                               modeName(b.mode), (unsigned long)b.clock, (unsigned long)b.seq, b.ack);
             }
@@ -193,7 +197,16 @@ void handleFrame(const RxItem& it) {
             onList(it.mac, body, blen);
             break;
         case FT_PROG_DATA:
-            onProgData(it.mac, body, blen);
+            if (!detail::controlOnProgData(it.mac, body, blen)) onProgData(it.mac, body, blen);
+            break;
+        case FT_PROG_REQ:
+            detail::controlOnProgReq(i, it.mac, body, blen);
+            break;
+        case FT_ACK:
+            detail::controlOnAck(i, body, blen);
+            break;
+        case FT_MODE_ACK:
+            detail::controlOnModeAck(i, body, blen);
             break;
         default:
             break;
@@ -426,6 +439,7 @@ void update() {
         checkOnline();
     }
     if (connected) catalogUpdate();
+    detail::controlUpdate();
 }
 
 const Lamp* lamp(int i) { return (i >= 0 && i < MAX_LAMPS && s_lamps[i].used) ? &s_lamps[i] : nullptr; }
@@ -433,6 +447,19 @@ const Lamp* lamp(int i) { return (i >= 0 && i < MAX_LAMPS && s_lamps[i].used) ? 
 const Stats& stats() { return s_stats; }
 
 const Catalog& catalog() { return s_cat; }
+
+namespace detail {
+bool sendFrame(const uint8_t* mac, FrameType type, const void* body, size_t bodyLen) {
+    return lamps::sendFrame(mac, type, body, bodyLen);
+}
+bool ensurePeer(const uint8_t* mac) { return lamps::ensurePeer(mac); }
+const Lamp* catalogSource() { return lamps::catalogSource(); }
+uint32_t ownBootId() { return s_ownBootId; }
+uint32_t maxModeClock() { return s_maxModeClock; }
+void noteModeClock(uint32_t clock) {
+    if (clock > s_maxModeClock) s_maxModeClock = clock;
+}
+}  // namespace detail
 
 const char* modeName(uint8_t mode) {
     switch (mode) {

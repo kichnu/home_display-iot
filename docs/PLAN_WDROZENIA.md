@@ -96,7 +96,7 @@ Każdy etap kończy się buildem, testem na sprzęcie i commitem.
 | 4 | Zmiany w lampach: `FT_CTRL_HB`, bity `flags`, blokada ESP-NOW w awarii FRAM | lampy | OTA na obie lampy, sync lampa–lampa działa jak wcześniej — ✅ 2026-11-13 (lampy FW 0.3.0 `a011d51`, panel wysyła `FT_CTRL_HB`, GUI lamp: „panel: Panel akwarium”) |
 | 4a | Symulacja GUI na komputerze (LVGL, ten sam kod ekranów) przed implementacją na panelu — ustalone 2026-11-13 | panel | układ L1/L2, pasek alarmów, lista programów zaakceptowane na PC — ✅ 2026-11-13 (`sim/`, kod ekranów w `src/gui/`; nazwy lamp z provisioningu) |
 | 5 | Model + UI odczytu: kafelek L1, ekran grupy L2, alarmy lamp, pasek alarmów, lista programów (cache nazw) | panel | stan zgodny z web GUI lamp, alarm `LAMP_OFFLINE` po odłączeniu lampy — ✅ 2026-11-13 (panel FW 0.5.0, katalog programów z `FT_LIST_REQ` + nazwy z chunku 0 `FT_PROG_REQ`) |
-| 6 | Sterowanie: Auto / Noc / Test, zmiana programu (dialog), stany pending / rejected | panel | macierz testów niżej |
+| 6 | Sterowanie: Auto / Noc / Test, zmiana programu (dialog), stany pending / rejected | panel | macierz testów niżej — ✅ 2026-11-13 (panel FW 0.6.0; przekazywanie programu lampie, która go pobiera; chwilowy rozjazd 5–8 s po zmianie z web GUI lampy) |
 | 7 | Trzecia lampa: provisioning, OTA, dołączenie do grupy | lampy | automatyczne wykrycie na panelu i w lampach, program pobrany |
 
 Później (poza etapem 1): wygaszacz, DO z buzzerem dla P1, `MANUAL_LEFT_ON`, kolejne węzły, wspólna
@@ -121,7 +121,8 @@ Etap 1 można robić równolegle z przeglądem tego planu, bo nie zależy od dec
 
 ## Do decyzji
 
-- [ ] Test light: stała 50 % na panelu (propozycja) czy domyślne wartości testu w konfiguracji lampy?
-- [ ] Tryb na lampach offline: panel tylko ostrzega (propozycja), bez automatycznej wysyłki po powrocie.
+- [x] Test light: 50 % na wszystkich kanałach — to samo co `TEST_START_V` lampy przy starcie Testu z web GUI
+      (2026-11-13).
+- [x] Tryb na lampach offline: panel tylko ostrzega, bez automatycznej wysyłki po powrocie (2026-11-13).
       Automatyczne wyrównanie to zmiana zachowania grupy, więc później i świadomie.
 - [ ] Czy panel ma mieć sterowanie pojedynczą lampą (L3)? Propozycja: nie w MVP, tylko podgląd.

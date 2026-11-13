@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include "gui/gui.h"
+#include "lamps/lamp_control.h"
 #include "lamps/lamp_listener.h"
 #include "net/network.h"
 #include "version.h"
@@ -21,6 +22,9 @@ constexpr uint32_t REBUILD_MS = 500;
 constexpr uint32_t WIFI_GRACE_MS = 30000;   // first connection after boot is not an alarm
 constexpr uint32_t LAMPS_GRACE_MS = 60000;  // heartbeats every 15 s: no lamp after 60 s = alarm
 constexpr uint32_t TIME_GRACE_MS = 120000;
+// After the last ACK the GUI stays "pending" until the heartbeats show the new state (no mismatch
+// flash in between), at most this long
+constexpr uint32_t CONFIRM_MS = 4000;
 
 static_assert(gui::MAX_LAMPS == lamps::MAX_LAMPS, "lamp slots map 1:1");
 static_assert((int)gui::MODE_AUTO == (int)lamps::MODE_PROGRAM && (int)gui::MODE_TEST == (int)lamps::MODE_TEST &&
@@ -54,11 +58,41 @@ void sortBytes(T (&a)[N], int n, Less less) {
     for (int i = 0; i < n; i++) memcpy(&a[i], &tmp[idx[i]], sizeof(T));
 }
 
+// Command in flight (lamp_control) + confirmation by heartbeats, then one toast with the result
+struct Tracker {
+    bool on;
+    uint32_t seenFinished;
+    uint32_t ackedMs;  // all targets final; 0 = still waiting for ACKs
+} s_track = {};
+
+const char* programName(uint64_t id) {
+    const lamps::Catalog& c = lamps::catalog();
+    for (int i = 0; i < c.count; i++)
+        if (c.e[i].id == id && c.e[i].named) return c.e[i].name;
+    return "?";
+}
+
+const char* modeLabel(uint8_t mode) { return lamps::modeName(mode); }
+
 class PanelCommands : public Commands {
 public:
-    void setMode(uint8_t) override { toast("Sterowanie lampami z panelu: etap 6", Sev::P3); }
-    void activateProgram(uint64_t) override { toast("Zmiana programu z panelu: etap 6", Sev::P3); }
+    void setMode(uint8_t mode) override {
+        if (!lamps::sendMode(mode)) return refused();
+        s_track = {true, lamps::command().finished, 0};
+        s_lastBuildMs = 0;  // show "pending" at once
+    }
+    void activateProgram(uint64_t id) override {
+        if (!lamps::sendActivate(id)) return refused();
+        s_track = {true, lamps::command().finished, 0};
+        s_lastBuildMs = 0;
+    }
     void refreshPrograms() override {}  // catalog follows catalog_hash by itself
+
+private:
+    static void refused() {
+        toast(net::connected() ? "Nie wysłano: brak lamp online lub poprzednie polecenie w toku" : "Nie wysłano: brak Wi-Fi",
+              Sev::P2);
+    }
 };
 PanelCommands s_commands;
 
@@ -104,6 +138,12 @@ void fillLamps(Model& m) {
         }
     }
     lg.pending = Pending::None;
+    if (s_track.on) {
+        const lamps::Command& c = lamps::command();
+        lg.pending = c.kind == lamps::CmdKind::Mode ? Pending::Mode : Pending::Program;
+        lg.pendingMode = c.mode;
+        lg.pendingProgram = c.programId;
+    }
 }
 
 void fillPrograms(Model& m) {
@@ -162,7 +202,7 @@ void fillAlarms(Model& m) {
         add(have && (f & lamps::HB_FLAG_ORPHAN), s_lampSince[i][LA_ORPHAN], Sev::P3, name,
             "aktywny program usunięty w innej lampie", Screen::Lamps);
     }
-    add(m.lamps.mismatch, s_panelSince[PA_MISMATCH], Sev::P3, "Lampy", "rozjazd trybu lub programu", Screen::Lamps);
+    add(m.lamps.mismatch && m.lamps.pending == Pending::None, s_panelSince[PA_MISMATCH], Sev::P3, "Lampy", "rozjazd trybu lub programu", Screen::Lamps);
     add(lampsSeen == 0 && up > LAMPS_GRACE_MS && lamps::stats().enabled, s_panelSince[PA_NO_LAMPS], Sev::P2, "Lampy",
         "brak heartbeatów lamp", Screen::Lamps);
     add(!m.wifi && up > WIFI_GRACE_MS, s_panelSince[PA_WIFI], Sev::P2, "Panel", "brak Wi-Fi", Screen::Overview);
@@ -173,6 +213,58 @@ void fillAlarms(Model& m) {
         if (a.prio != b.prio) return (uint8_t)a.prio > (uint8_t)b.prio;
         return a.since < b.since;
     });
+}
+
+// Heartbeats of the lamps that acknowledged show the commanded state
+bool confirmedByHeartbeats(const lamps::Command& c) {
+    for (int i = 0; i < c.count; i++) {
+        if (c.t[i].state != lamps::TargetState::Done) continue;
+        const lamps::Lamp* l = lamps::lamp(c.t[i].slot);
+        if (!l || !l->haveHb) continue;
+        if (c.kind == lamps::CmdKind::Mode ? l->hb.mode != c.mode : l->hb.active_id != c.programId) return false;
+    }
+    return true;
+}
+
+void resultToast(const lamps::Command& c) {
+    char names[96] = "";
+    int done = 0, rejected = 0, noAck = 0;
+    for (int i = 0; i < c.count; i++) {
+        const lamps::CmdTarget& t = c.t[i];
+        if (t.state == lamps::TargetState::Done) {
+            done++;
+            continue;
+        }
+        if (t.state == lamps::TargetState::Rejected) rejected++;
+        else noAck++;
+        size_t n = strlen(names);
+        snprintf(names + n, sizeof(names) - n, "%s%s", n ? ", " : "", t.name);
+    }
+    char msg[160];
+    if (rejected) {
+        snprintf(msg, sizeof(msg), "Program odrzucony (usunięty w GUI lampy): %s", names);
+        toast(msg, Sev::P2);
+    } else if (noAck) {
+        snprintf(msg, sizeof(msg), "Brak potwierdzenia od: %s", names);
+        toast(msg, Sev::P2);
+    } else if (c.kind == lamps::CmdKind::Mode) {
+        snprintf(msg, sizeof(msg), "Tryb %s ustawiony (lampy: %d)", modeLabel(c.mode), done);
+        toast(msg);
+    } else {
+        snprintf(msg, sizeof(msg), "Program „%s” ustawiony (lampy: %d)", programName(c.programId), done);
+        toast(msg);
+    }
+}
+
+void trackCommand() {
+    if (!s_track.on) return;
+    const lamps::Command& c = lamps::command();
+    if (c.active || c.finished == s_track.seenFinished) return;
+    if (!s_track.ackedMs) s_track.ackedMs = millis() | 1;
+    if (!confirmedByHeartbeats(c) && millis() - s_track.ackedMs < CONFIRM_MS) return;
+    s_track.on = false;
+    s_lastBuildMs = 0;
+    resultToast(c);
 }
 
 void build(Model& m) {
@@ -189,6 +281,7 @@ void build(Model& m) {
 }  // namespace
 
 void update() {
+    trackCommand();
     if (s_lastBuildMs && millis() - s_lastBuildMs < REBUILD_MS) return;
     s_lastBuildMs = millis();
     build(s_next);

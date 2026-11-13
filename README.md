@@ -5,10 +5,9 @@ Central touch panel for the aquarium nodes, on the
 (800x480 RGB565 ST7262, GT911 touch, CH422G IO expander). Design notes (Polish):
 `Panel dotykowy ESP-NOW — ustalenia i stack.md`, rollout plan: `docs/PLAN_WDROZENIA.md`.
 
-Current state: stage 5 — Wi-Fi STA, NTP, ArduinoOTA, ESP-NOW listener of the lamps with a controller
-heartbeat (`FT_CTRL_HB`, lamp FW >= 0.3.0 shows "panel: Panel akwarium") and the panel GUI over live
-lamp data: lamp group, program catalog read from a lamp, alarms. Read only: no commands are sent to the
-lamps yet (stage 6).
+Current state: stage 6 — Wi-Fi STA, NTP, ArduinoOTA, ESP-NOW with the lamps as a controller
+(`FT_CTRL_HB`, lamp FW >= 0.3.0 shows "panel: Panel akwarium") and the panel GUI over live lamp data:
+lamp group, program catalog read from a lamp, alarms, group control (Auto / Noc / Test, program change).
 
 ## Build / flash
 
@@ -99,6 +98,12 @@ model built from the lamp protocol (`src/app/panel_model.cpp`).
   (`FT_PROG_REQ`); retry after 10 s on failure.
 - Alarms: P2 lamp offline, lamp FRAM error, no lamp heartbeat 60 s after boot, no Wi-Fi 30 s after boot;
   P3 lamp RTC error, orphaned program, mode / program mismatch, no NTP time 2 min after boot.
+- Control (`src/lamps/lamp_control.cpp`, lamp protocol): mode = `FT_MODE` to every online lamp, new
+  session `clock = max(UTC, highest seen + 1)`, retried every 250 ms until `FT_MODE_ACK`, Test at 50 %;
+  program = `FT_ACTIVATE` to every online lamp, retried every 500 ms until `FT_ACK`. A lamp without the
+  program fetches it from the panel, which relays the blob from a lamp that has it. The GUI stays
+  "pending" until the heartbeats show the new state, then one toast with the result. Offline lamps are
+  not addressed (mismatch shown when they return).
 - OTA upload shows a progress modal on the screen.
 
 Serial commands: `i` memory info, `b` toggle backlight, `w` network / time info, `l` lamp table with
