@@ -26,7 +26,7 @@ lv_display_t* s_disp = nullptr;
 lv_indev_t* s_indev = nullptr;
 Fonts s_fonts = {};
 
-bool s_backlight = true;
+bool s_backlight = false;  // switched on by main after the first frame
 bool s_swallowTouch = false;  // touch that woke the screen, ignored until release
 bool s_pressed = false;
 int16_t s_x = 0, s_y = 0;
@@ -142,5 +142,11 @@ void setBacklight(bool on) {
 }
 
 bool backlight() { return s_backlight; }
+
+void restart() {
+    setBacklight(false);
+    delay(20);  // let the current frame finish with the backlight already off
+    esp_restart();
+}
 
 }  // namespace ui

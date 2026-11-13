@@ -1,5 +1,5 @@
 #pragma once
-// Stage 1 demo screen: layout trial for the lamp group page (mock data, no radio),
+// Demo screen: layout trial for the lamp group page (mock data), network/clock header,
 // Polish glyph test, animation for tearing checks, FPS monitor and backlight wake test.
 
 namespace ui {

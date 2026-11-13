@@ -23,4 +23,8 @@ const Fonts& fonts();
 void setBacklight(bool on);
 bool backlight();
 
+// Backlight off, then esp_restart(). The CH422G keeps the backlight on across an ESP32 reset
+// while the RGB signals stop, which shows ~1 s of garbage.
+[[noreturn]] void restart();
+
 }  // namespace ui

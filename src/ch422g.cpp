@@ -13,10 +13,12 @@ constexpr uint8_t CMD_IO_OUT = 0x38;
 constexpr uint8_t CMD_IO_IN = 0x26;
 constexpr uint8_t SYS_IO_OE = 0x01;
 
-// Default: TP_RST low (touch held in reset), backlight on, LCD out of reset, SD_CS high.
+// Default: TP_RST low (touch held in reset), backlight OFF until the first frame is drawn (the
+// CH422G keeps its outputs across an ESP32 reset, and an un-driven RGB panel shows garbage),
+// LCD out of reset, SD_CS high.
 // DI0/DI1 (EXIO0/EXIO5) are driven LOW: they are optocoupler collectors with a 4.7k pull-up, so
 // LOW only sinks the pull-up current, while HIGH could fight an active optocoupler.
-uint8_t s_state = (1 << EXIO_LCD_BL) | (1 << EXIO_LCD_RST) | (1 << EXIO_SD_CS);
+uint8_t s_state = (1 << EXIO_LCD_RST) | (1 << EXIO_SD_CS);
 
 bool sendByte(uint8_t cmd, uint8_t value) {
     Wire.beginTransmission(cmd);

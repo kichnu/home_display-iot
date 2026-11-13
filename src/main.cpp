@@ -1,9 +1,9 @@
-// Touch panel firmware for Waveshare ESP32-S3-Touch-LCD-4.3B — stage 1: LVGL foundation.
+// Touch panel firmware for Waveshare ESP32-S3-Touch-LCD-4.3B — stage 2: network.
 //
-// Boot: I2C scan, CH422G (backlight on), RGB panel with two PSRAM framebuffers, GT911,
-// LVGL 9 port (DIRECT mode, TinyTTF Noto fonts), demo screen. No radio yet.
+// Boot: I2C scan, CH422G (backlight off until the first frame), RGB panel with two PSRAM framebuffers, GT911,
+// LVGL 9 port (DIRECT mode, TinyTTF Noto fonts), demo screen, Wi-Fi STA + NTP + ArduinoOTA.
 //
-// Serial commands: i = memory / touch info, b = toggle backlight.
+// Serial commands: i = memory info, b = toggle backlight, w = network / time info, r = restart.
 
 #include <Arduino.h>
 #include <Wire.h>
@@ -13,6 +13,7 @@
 #include "ch422g.h"
 #include "gt911.h"
 #include "lcd.h"
+#include "net/network.h"
 #include "ui/demo_screen.h"
 #include "ui/lvgl_port.h"
 
@@ -43,6 +44,11 @@ void handleSerial() {
         } else if (c == 'b') {
             ui::setBacklight(!ui::backlight());
             Serial.printf("Backlight %s\n", ui::backlight() ? "on" : "off");
+        } else if (c == 'w') {
+            net::printInfo();
+        } else if (c == 'r') {
+            Serial.println("Restart");
+            ui::restart();
         }
     }
 }
@@ -53,7 +59,7 @@ void setup() {
     Serial.begin(115200);
     uint32_t t0 = millis();
     while (!Serial && millis() - t0 < 1500) delay(10);
-    Serial.println("\n=== home_display-iot: stage 1 (LVGL) ===");
+    Serial.println("\n=== home_display-iot: stage 2 (network) ===");
     Serial.printf("Chip %s rev %d, PSRAM %u B\n", ESP.getChipModel(), ESP.getChipRevision(), ESP.getPsramSize());
 
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, I2C_FREQ_HZ);
@@ -78,10 +84,14 @@ void setup() {
         while (true) delay(1000);
     }
     ui::createDemoScreen();
+    lv_refr_now(nullptr);  // first full frame into the framebuffer, then light the screen
+    ui::setBacklight(true);
+    net::begin();
     printMemory();
 }
 
 void loop() {
+    net::update();
     ui::update();
     handleSerial();
     if (millis() - g_lastTick >= 1000) {

@@ -2,7 +2,9 @@
 
 #include <Arduino.h>
 #include <lvgl.h>
+#include <time.h>
 
+#include "../net/network.h"
 #include "lvgl_port.h"
 
 namespace ui {
@@ -195,10 +197,23 @@ void createDemoScreen() {
 }
 
 void demoTick() {
-    uint32_t s = millis() / 1000;
-    lv_label_set_text_fmt(s_uptime, "LVGL %d.%d.%d · czas pracy %02lu:%02lu:%02lu", LVGL_VERSION_MAJOR,
-                          LVGL_VERSION_MINOR, LVGL_VERSION_PATCH, (unsigned long)(s / 3600),
-                          (unsigned long)(s / 60 % 60), (unsigned long)(s % 60));
+    // Header: network state + clock (NTP), uptime until the clock is set
+    char net[48];
+    if (net::connected()) snprintf(net, sizeof(net), LV_SYMBOL_WIFI " %s (%d dBm)", net::ip().c_str(), net::rssi());
+    else snprintf(net, sizeof(net), LV_SYMBOL_WARNING " brak Wi-Fi");
+
+    char clock[32];
+    if (net::timeValid()) {
+        time_t now = time(nullptr);
+        struct tm lt;
+        localtime_r(&now, &lt);
+        strftime(clock, sizeof(clock), "%d.%m %H:%M:%S", &lt);
+    } else {
+        uint32_t s = millis() / 1000;
+        snprintf(clock, sizeof(clock), "czas pracy %02lu:%02lu:%02lu", (unsigned long)(s / 3600),
+                 (unsigned long)(s / 60 % 60), (unsigned long)(s % 60));
+    }
+    lv_label_set_text_fmt(s_uptime, "%s · %s", net, clock);
 }
 
 }  // namespace ui
