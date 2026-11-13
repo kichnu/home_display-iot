@@ -1,6 +1,6 @@
 #pragma once
-// Demo screen: layout trial for the lamp group page (mock data), network/clock header,
-// Polish glyph test, animation for tearing checks, FPS monitor and backlight wake test.
+// Test screen: raw lamp table from the passive ESP-NOW listener (stage 3), network/clock header,
+// spinner for tearing checks while the radio runs, FPS monitor and backlight wake test.
 
 namespace ui {
 

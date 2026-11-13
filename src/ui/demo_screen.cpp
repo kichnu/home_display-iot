@@ -4,6 +4,7 @@
 #include <lvgl.h>
 #include <time.h>
 
+#include "../lamps/lamp_listener.h"
 #include "../net/network.h"
 #include "lvgl_port.h"
 
@@ -11,76 +12,14 @@ namespace ui {
 
 namespace {
 constexpr int TOUCH_H = 80;  // minimum touch target height (wet fingers), see the decisions doc
-
-const char* const MODE_MAP[] = {"Auto", "Noc", "Test", ""};
-const char* const MODE_NAMES[] = {"Auto", "Noc", "Test"};
-const char* const DEMO_PROGRAMS = "Rafa dzień\nRafa zima\nAklimatyzacja\nFabryczny";
+constexpr int COLS = 7;
+const char* const HEADERS[COLS] = {"Lampa", "MAC", "Stan", "Tryb", "Program", "Czas", "RSSI"};
+const int32_t WIDTHS[COLS] = {150, 100, 130, 70, 170, 60, 70};
 
 lv_obj_t* s_uptime = nullptr;
-lv_obj_t* s_status = nullptr;
-lv_obj_t* s_modes = nullptr;
-lv_obj_t* s_programRoller = nullptr;
-lv_obj_t* s_programDialog = nullptr;
-char s_program[32] = "Rafa dzień";
-int s_mode = 0;
+lv_obj_t* s_table = nullptr;
+lv_obj_t* s_stats = nullptr;
 bool s_perfShown = false;
-
-void refreshStatus() {
-    lv_label_set_text_fmt(s_status, "Tryb: %s · Program: %s", MODE_NAMES[s_mode], s_program);
-}
-
-lv_obj_t* makeCard(lv_obj_t* parent, const char* title) {
-    lv_obj_t* card = lv_obj_create(parent);
-    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(card, 12, 0);
-    lv_obj_remove_flag(card, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_t* t = lv_label_create(card);
-    lv_obj_set_style_text_font(t, fonts().title, 0);
-    lv_label_set_text(t, title);
-    return card;
-}
-
-void onMode(lv_event_t* e) {
-    lv_obj_t* m = static_cast<lv_obj_t*>(lv_event_get_target(e));
-    uint32_t idx = lv_buttonmatrix_get_selected_button(m);
-    if (idx > 2) return;
-    s_mode = idx;
-    refreshStatus();
-    Serial.printf("Demo: mode -> %s\n", MODE_NAMES[s_mode]);
-}
-
-void onProgramDialogButton(lv_event_t* e) {
-    bool apply = reinterpret_cast<intptr_t>(lv_event_get_user_data(e)) != 0;
-    if (apply) {
-        lv_roller_get_selected_str(s_programRoller, s_program, sizeof(s_program));
-        refreshStatus();
-        Serial.printf("Demo: program -> %s\n", s_program);
-    }
-    lv_msgbox_close(s_programDialog);
-    s_programDialog = nullptr;
-}
-
-void onProgram(lv_event_t*) {
-    // Safety 1 (setting change): explicit confirmation in a panel-style modal.
-    s_programDialog = lv_msgbox_create(nullptr);
-    lv_obj_set_width(s_programDialog, 520);
-    lv_obj_t* title = lv_msgbox_add_title(s_programDialog, "Program na wszystkich lampach");
-    lv_obj_set_style_text_font(title, fonts().title, 0);
-    lv_obj_t* content = lv_msgbox_get_content(s_programDialog);
-    s_programRoller = lv_roller_create(content);
-    lv_roller_set_options(s_programRoller, DEMO_PROGRAMS, LV_ROLLER_MODE_NORMAL);
-    lv_roller_set_visible_row_count(s_programRoller, 3);
-    lv_obj_set_width(s_programRoller, lv_pct(100));
-
-    lv_obj_t* cancel = lv_msgbox_add_footer_button(s_programDialog, "Anuluj");
-    lv_obj_t* ok = lv_msgbox_add_footer_button(s_programDialog, "Ustaw");
-    for (lv_obj_t* b : {cancel, ok}) {
-        lv_obj_set_height(b, TOUCH_H);
-        lv_obj_set_flex_grow(b, 1);
-    }
-    lv_obj_add_event_cb(cancel, onProgramDialogButton, LV_EVENT_CLICKED, reinterpret_cast<void*>(0));
-    lv_obj_add_event_cb(ok, onProgramDialogButton, LV_EVENT_CLICKED, reinterpret_cast<void*>(1));
-}
 
 void onPerf(lv_event_t* e) {
     lv_obj_t* sw = static_cast<lv_obj_t*>(lv_event_get_target(e));
@@ -90,8 +29,48 @@ void onPerf(lv_event_t* e) {
 }
 
 void onBlank(lv_event_t*) {
-    Serial.println("Demo: backlight off, touch to wake");
+    Serial.println("UI: backlight off, touch to wake");
     setBacklight(false);
+}
+
+void refreshLamps() {
+    uint32_t now = millis();
+    int row = 1;
+    for (int i = 0; i < lamps::MAX_LAMPS; i++) {
+        const lamps::Lamp* l = lamps::lamp(i);
+        if (!l) continue;
+        char buf[40];
+        lv_table_set_cell_value(s_table, row, 0, l->haveHb ? l->hb.name : "?");
+        snprintf(buf, sizeof(buf), "%02X:%02X:%02X", l->mac[3], l->mac[4], l->mac[5]);
+        lv_table_set_cell_value(s_table, row, 1, buf);
+        if (!l->haveHb) {
+            lv_table_set_cell_value(s_table, row, 2, "bez HB");
+            for (int c = 3; c < 6; c++) lv_table_set_cell_value(s_table, row, c, "");
+        } else {
+            snprintf(buf, sizeof(buf), "%s %lus", l->online ? "online" : "OFFLINE",
+                     (unsigned long)((now - l->lastHbMs) / 1000));
+            lv_table_set_cell_value(s_table, row, 2, buf);
+            snprintf(buf, sizeof(buf), "%s%s", lamps::modeName(l->hb.mode),
+                     (l->hb.flags & lamps::HB_FLAG_ORPHAN) ? "*" : "");
+            lv_table_set_cell_value(s_table, row, 3, buf);
+            lv_table_set_cell_value(s_table, row, 4, l->hb.active_name);
+            lv_table_set_cell_value(s_table, row, 5, lamps::timeQualityName(l->hb.time_q));
+        }
+        snprintf(buf, sizeof(buf), "%d", l->rssi);
+        lv_table_set_cell_value(s_table, row, 6, buf);
+        row++;
+    }
+    lv_table_set_row_count(s_table, row);
+
+    const lamps::Stats& st = lamps::stats();
+    if (!st.enabled) {
+        lv_label_set_text(s_stats, LV_SYMBOL_WARNING " ESP-NOW wyłączone (brak hasła Wi-Fi w buildzie)");
+        return;
+    }
+    lv_label_set_text_fmt(s_stats, "rx ok %lu · zły HMAC %lu · powtórki %lu · format %lu · zgubione %lu · HB %lu · MODE %lu",
+                          (unsigned long)st.rxOk, (unsigned long)st.rxBadTag, (unsigned long)st.rxReplay,
+                          (unsigned long)st.rxBadFormat, (unsigned long)st.rxDropped,
+                          (unsigned long)st.byType[lamps::FT_HB], (unsigned long)st.byType[lamps::FT_MODE]);
 }
 }  // namespace
 
@@ -115,56 +94,34 @@ void createDemoScreen() {
     lv_obj_set_style_text_font(s_uptime, fonts().small, 0);
     lv_obj_align(s_uptime, LV_ALIGN_RIGHT_MID, 0, 0);
 
-    // Content row
-    lv_obj_t* row = lv_obj_create(scr);
-    lv_obj_set_width(row, lv_pct(100));
-    lv_obj_set_flex_grow(row, 1);
-    lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
-    lv_obj_set_style_pad_all(row, 0, 0);
-    lv_obj_set_style_pad_column(row, 12, 0);
-    lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(row, 0, 0);
-    lv_obj_remove_flag(row, LV_OBJ_FLAG_SCROLLABLE);
+    // Raw lamp table (stage 3: passive ESP-NOW listener)
+    lv_obj_t* card = lv_obj_create(scr);
+    lv_obj_set_width(card, lv_pct(100));
+    lv_obj_set_flex_grow(card, 1);
+    lv_obj_set_flex_flow(card, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_pad_row(card, 8, 0);
+    lv_obj_set_style_pad_all(card, 10, 0);
+    lv_obj_t* t = lv_label_create(card);
+    lv_obj_set_style_text_font(t, fonts().title, 0);
+    lv_label_set_text(t, LV_SYMBOL_WIFI " Lampy — nasłuch ESP-NOW");
 
-    // Lamp group card (mock): status zone + control zone
-    lv_obj_t* lamps = makeCard(row, LV_SYMBOL_IMAGE " Lampy (demo)");
-    lv_obj_set_height(lamps, lv_pct(100));
-    lv_obj_set_flex_grow(lamps, 3);
-    s_status = lv_label_create(lamps);
-    lv_obj_set_width(s_status, lv_pct(100));
-    lv_label_set_long_mode(s_status, LV_LABEL_LONG_DOT);
-    refreshStatus();
+    s_table = lv_table_create(card);
+    lv_obj_set_width(s_table, lv_pct(100));
+    lv_obj_set_flex_grow(s_table, 1);
+    lv_obj_set_style_text_font(s_table, fonts().small, 0);
+    lv_obj_set_style_pad_ver(s_table, 6, LV_PART_ITEMS);
+    lv_obj_set_style_pad_hor(s_table, 6, LV_PART_ITEMS);
+    lv_table_set_column_count(s_table, COLS);
+    for (int c = 0; c < COLS; c++) {
+        lv_table_set_column_width(s_table, c, WIDTHS[c]);
+        lv_table_set_cell_value(s_table, 0, c, HEADERS[c]);
+    }
+    lv_table_set_row_count(s_table, 1);
 
-    s_modes = lv_buttonmatrix_create(lamps);
-    lv_buttonmatrix_set_map(s_modes, MODE_MAP);
-    lv_buttonmatrix_set_button_ctrl_all(s_modes, LV_BUTTONMATRIX_CTRL_CHECKABLE);
-    lv_buttonmatrix_set_one_checked(s_modes, true);
-    lv_buttonmatrix_set_button_ctrl(s_modes, 0, LV_BUTTONMATRIX_CTRL_CHECKED);
-    lv_obj_set_size(s_modes, lv_pct(100), TOUCH_H + 16);
-    lv_obj_set_style_text_font(s_modes, fonts().body, 0);
-    lv_obj_add_event_cb(s_modes, onMode, LV_EVENT_VALUE_CHANGED, nullptr);
-
-    lv_obj_t* prog = lv_button_create(lamps);
-    lv_obj_set_size(prog, lv_pct(100), TOUCH_H);
-    lv_obj_t* progLabel = lv_label_create(prog);
-    lv_label_set_text(progLabel, LV_SYMBOL_LIST "  Program…");
-    lv_obj_center(progLabel);
-    lv_obj_add_event_cb(prog, onProgram, LV_EVENT_CLICKED, nullptr);
-
-    // Glyph / rendering test card
-    lv_obj_t* glyphs = makeCard(row, "Test fontów");
-    lv_obj_set_height(glyphs, lv_pct(100));
-    lv_obj_set_flex_grow(glyphs, 2);
-    lv_obj_t* l1 = lv_label_create(glyphs);
-    lv_label_set_text(l1, "Zażółć gęślą jaźń");
-    lv_obj_t* l2 = lv_label_create(glyphs);
-    lv_obj_set_style_text_font(l2, fonts().small, 0);
-    lv_label_set_text(l2, "ZAŻÓŁĆ GĘŚLĄ JAŹŃ · µS/cm");
-    lv_obj_t* l3 = lv_label_create(glyphs);
-    lv_obj_set_style_text_font(l3, fonts().value, 0);
-    lv_label_set_text(l3, "25,4 °C");
-    lv_obj_t* spin = lv_spinner_create(glyphs);
-    lv_obj_set_size(spin, 56, 56);
+    s_stats = lv_label_create(card);
+    lv_obj_set_width(s_stats, lv_pct(100));
+    lv_obj_set_style_text_font(s_stats, fonts().small, 0);
+    lv_label_set_long_mode(s_stats, LV_LABEL_LONG_DOT);
 
     // Bottom bar: FPS monitor, backlight wake test
     lv_obj_t* bar = lv_obj_create(scr);
@@ -179,6 +136,9 @@ void createDemoScreen() {
     lv_obj_t* perf = lv_switch_create(bar);
     lv_obj_set_size(perf, 96, 48);
     lv_obj_add_event_cb(perf, onPerf, LV_EVENT_VALUE_CHANGED, nullptr);
+
+    lv_obj_t* spin = lv_spinner_create(bar);  // animation: tearing / smoothness check while the radio runs
+    lv_obj_set_size(spin, 48, 48);
 
     lv_obj_t* spacer = lv_obj_create(bar);
     lv_obj_set_flex_grow(spacer, 1);
@@ -214,6 +174,7 @@ void demoTick() {
                  (unsigned long)(s / 60 % 60), (unsigned long)(s % 60));
     }
     lv_label_set_text_fmt(s_uptime, "%s · %s", net, clock);
+    refreshLamps();
 }
 
 }  // namespace ui

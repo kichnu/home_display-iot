@@ -5,7 +5,8 @@ Central touch panel for the aquarium nodes, on the
 (800x480 RGB565 ST7262, GT911 touch, CH422G IO expander). Design notes (Polish):
 `Panel dotykowy ESP-NOW — ustalenia i stack.md`, rollout plan: `docs/PLAN_WDROZENIA.md`.
 
-Current state: stage 2 — LVGL demo screen + Wi-Fi STA, NTP time and ArduinoOTA. No ESP-NOW yet.
+Current state: stage 3 — Wi-Fi STA, NTP, ArduinoOTA and a passive ESP-NOW listener of the lamps
+(raw lamp table on screen, nothing is sent to the lamps yet).
 
 ## Build / flash
 
@@ -47,22 +48,29 @@ Serial goes over native USB (USB-CDC on boot). If the port does not show up, hol
   LVGL symbol icons come from the built-in Montserrat fonts set as fallback.
 - Network: Wi-Fi STA with `setSleep(false)` (modem sleep drops ESP-NOW frames), auto-reconnect,
   NTP with the same servers and time zone as the lamps, ArduinoOTA (`src/net/network.cpp`).
+- Lamps: passive listener of the lamp ESP-NOW protocol (`src/lamps/`): group key
+  `SHA-256("RL90-ESPNOW-v1:" + Wi-Fi password)`, HMAC-SHA256/16 per frame, replay check by
+  `(boot_id, seq)` per sender, lamp online = heartbeat within 45 s. Wire format copied from
+  `led_lamp_aquarium-iot` (`lamp_proto.h`, sizes checked at compile time). Only broadcasts are
+  visible (heartbeats, live mode frames). Without NTP the clock is taken from a lamp heartbeat with
+  NTP time.
 - Backlight is on/off only (CH422G EXIO2). The CH422G keeps its outputs across an ESP32 reset, so the
   backlight is switched off before every restart (OTA, `r`) and stays off at boot until the first
   frame is drawn — otherwise the un-driven panel shows ~1 s of garbage. With the backlight off the first touch only wakes the
   screen and is not passed to the UI.
 
-## Demo screen
-
-- "Lampy (demo)" card: Auto / Noc / Test mode buttons and "Program…" with a confirmation modal
-  (mock data, logged on Serial).
-- "Test fontów" card: Polish glyphs at three sizes, spinner animation (tearing / smoothness check).
-- Bottom bar: FPS / CPU overlay switch, "Wygaś ekran" (backlight off, touch to wake).
+## Test screen
 
 - Header: Wi-Fi state (IP, RSSI) and NTP clock (Europe/Warsaw), uptime until the clock is set.
+- "Lampy — nasłuch ESP-NOW": one row per sender (name, MAC tail, online + seconds since the last
+  heartbeat, mode with `*` = orphaned program, active program, lamp time source, RSSI) and counters
+  (accepted, bad HMAC, replays, bad format, dropped, heartbeats, live mode frames). A growing
+  "zły HMAC" means a different Wi-Fi password (= group key) than the lamps.
+- Bottom bar: FPS / CPU overlay, spinner (smoothness check with the radio on), backlight off.
 - OTA upload shows a progress modal on the screen.
 
-Serial commands: `i` memory info, `b` toggle backlight, `w` network / time info, `r` restart.
+Serial commands: `i` memory info, `b` toggle backlight, `w` network / time info, `l` lamp table with
+all heartbeat fields, `r` restart.
 
 The original bring-up test (patterns, touch paint, DI read test) is in git history (`27efbea`) and
 in `~/Dokumenty/My_apps/TOOLS/test_ESP32-S3-Touch-LCD-4.3B/`.
