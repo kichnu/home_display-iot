@@ -40,6 +40,31 @@ full recompile on every switch between the projects. Without XIP from PSRAM any 
 init, OTA) panics in the RGB bounce-buffer ISR.
 Serial goes over native USB (USB-CDC on boot). If the port does not show up, hold BOOT and press RESET.
 
+## GUI simulator (PC)
+
+The panel GUI (`src/gui/`, LVGL only) also runs on the PC in an 800x480 SDL2 window, with mock data
+(`sim/mock.cpp`): mouse = touch, keys toggle states (lamp offline, FRAM/RTC error, mode mismatch,
+alarms, command without ACK, no Wi-Fi, ...; `h` prints the list).
+
+```sh
+sudo apt install libsdl2-dev                     # once
+pio run                                          # once: downloads LVGL (lib_deps) used by the simulator
+cmake -S sim -B sim/build && cmake --build sim/build -j 6
+./sim/build/panel_sim
+```
+
+Scripted run without a person (screenshots for review, PPM = window pixels including modals):
+
+```sh
+./sim/build/panel_sim --script "w1500;k5;c130,160;w800;s/tmp/lamps.ppm;q"
+# wN wait N ms · kC key · cX,Y click · sFILE screenshot · q quit
+```
+
+Screens: overview (tiles per node / group), lamp group (rows per lamp, Auto / Noc / Test,
+Program…), program list with confirmation, alarm list; alarm strip under the top bar only while
+alarms are active; screensaver after 60 s without input. On the panel the same code is wired to the
+lamp protocol in stage 5.
+
 ## Stack
 
 - Display: ESP-IDF `esp_lcd` RGB panel, two framebuffers in PSRAM + bounce buffers in SRAM.
@@ -47,7 +72,7 @@ Serial goes over native USB (USB-CDC on boot). If the port does not show up, hol
   for the end of the frame in progress (`src/lcd.cpp`, `src/ui/lvgl_port.cpp`).
 - GUI: LVGL 9.2.2 (`lib_deps`), configuration in `include/lv_conf.h`.
 - Touch: own GT911 driver (`src/gt911.cpp`) as an LVGL pointer input.
-- Fonts: Noto Sans Regular/Bold TTF embedded in flash (`src/ui/fonts.S`, `assets/fonts/`, OFL)
+- Fonts: Noto Sans Regular/Bold TTF embedded in flash (`src/gui/fonts.S`, `assets/fonts/`, OFL)
   and rendered at runtime by LVGL TinyTTF — full Polish character set without a font converter.
   LVGL symbol icons come from the built-in Montserrat fonts set as fallback.
 - Network: Wi-Fi STA with `setSleep(false)` (modem sleep drops ESP-NOW frames), auto-reconnect,

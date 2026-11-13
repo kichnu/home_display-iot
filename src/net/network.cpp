@@ -8,6 +8,7 @@
 #include <time.h>
 
 #include "ota_secret.h"
+#include "../gui/fonts.h"
 #include "../ui/lvgl_port.h"
 #include "wifi_secret.h"
 
@@ -50,7 +51,7 @@ void otaShow() {
     lv_obj_set_flex_align(s_otaBox, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
     lv_obj_set_style_pad_row(s_otaBox, 24, 0);
     lv_obj_t* t = lv_label_create(s_otaBox);
-    lv_obj_set_style_text_font(t, ui::fonts().title, 0);
+    lv_obj_set_style_text_font(t, gui::fonts().title, 0);
     lv_label_set_text(t, LV_SYMBOL_DOWNLOAD "  Aktualizacja firmware");
     s_otaBar = lv_bar_create(s_otaBox);
     lv_obj_set_size(s_otaBar, lv_pct(90), 28);

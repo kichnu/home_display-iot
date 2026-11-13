@@ -1,4 +1,4 @@
-// LVGL 9.2 configuration for the touch panel (ESP32-S3, 800x480 RGB565).
+// LVGL 9.2 configuration for the touch panel (ESP32-S3, 800x480 RGB565) and its PC simulator.
 // Only the options that differ from LVGL defaults are listed; the rest comes from lv_conf_internal.h.
 #ifndef LV_CONF_H
 #define LV_CONF_H
@@ -18,7 +18,11 @@
 
 #define LV_USE_LOG 1
 #define LV_LOG_LEVEL LV_LOG_LEVEL_WARN
+#ifdef GUI_SIMULATOR
+#define LV_LOG_PRINTF 1
+#else
 #define LV_LOG_PRINTF 0
+#endif
 
 // Built-in fonts: only as a fallback for LV_SYMBOL_* icons (TinyTTF Noto has no symbol glyphs).
 #define LV_FONT_MONTSERRAT_14 1
@@ -41,5 +45,13 @@
 
 #define LV_USE_THEME_DEFAULT 1
 #define LV_THEME_DEFAULT_DARK 1
+
+// PC simulator (sim/, CMake defines GUI_SIMULATOR): SDL2 window + mouse instead of the RGB panel
+#ifdef GUI_SIMULATOR
+#define LV_USE_SDL 1
+#define LV_SDL_INCLUDE_PATH <SDL2/SDL.h>
+#define LV_SDL_RENDER_MODE LV_DISPLAY_RENDER_MODE_DIRECT
+#define LV_SDL_BUF_COUNT 1
+#endif
 
 #endif  // LV_CONF_H

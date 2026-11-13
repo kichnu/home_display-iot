@@ -94,7 +94,7 @@ Każdy etap kończy się buildem, testem na sprzęcie i commitem.
 | 2 | Wi-Fi STA (sekrety przez pre-script z `~/.secrets/iot.env`), `setSleep(false)`, ArduinoOTA, NTP | panel | panel w sieci, czas z NTP, upload OTA |
 | 3 | Pasywny nasłuch lamp: weryfikacja HMAC, replay, tablica lamp; log i ekran surowy | panel | obie lampy widoczne, `rx_bad = 0`, obraz stabilny przy pracy radia (otwarte ryzyko) |
 | 4 | Zmiany w lampach: `FT_CTRL_HB`, bity `flags`, blokada ESP-NOW w awarii FRAM | lampy | OTA na obie lampy, sync lampa–lampa działa jak wcześniej — ✅ 2026-11-13 (lampy FW 0.3.0 `a011d51`, panel wysyła `FT_CTRL_HB`, GUI lamp: „panel: Panel akwarium”) |
-| 4a | Symulacja GUI na komputerze (LVGL, ten sam kod ekranów) przed implementacją na panelu — ustalone 2026-11-13 | panel | układ L1/L2, pasek alarmów, lista programów zaakceptowane na PC |
+| 4a | Symulacja GUI na komputerze (LVGL, ten sam kod ekranów) przed implementacją na panelu — ustalone 2026-11-13 | panel | układ L1/L2, pasek alarmów, lista programów zaakceptowane na PC — ✅ 2026-11-13 (`sim/`, kod ekranów w `src/gui/`; nazwy lamp z provisioningu) |
 | 5 | Model + UI odczytu: kafelek L1, ekran grupy L2, alarmy lamp, pasek alarmów, lista programów (cache nazw) | panel | stan zgodny z web GUI lamp, alarm `LAMP_OFFLINE` po odłączeniu lampy |
 | 6 | Sterowanie: Auto / Noc / Test, zmiana programu (dialog), stany pending / rejected | panel | macierz testów niżej |
 | 7 | Trzecia lampa: provisioning, OTA, dołączenie do grupy | lampy | automatyczne wykrycie na panelu i w lampach, program pobrany |

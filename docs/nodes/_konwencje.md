@@ -112,3 +112,10 @@ w HEARTBEAT, nie jako parametry.
   krótki (≤ 20 B), wysyłany w schemacie lub rzadkim STATE.
 - Zależności walidacji między parametrami (termostat: `cool_full < alarm_delta_high` itd.) egzekwuje węzeł;
   panel pokazuje odrzucenie (`rejected` + komunikat z ACK).
+
+## Do sprawdzenia przy pracy z danymi węzłów
+
+- Nazwa węzła na panelu = nazwa z provisioningu (ustalone 2026-11-13 dla lamp: `HbBody.name` =
+  `getDeviceID()`, bez aliasów na panelu; walidator dopuszcza 3–32 znaki `[A-Za-z0-9_-]`). Nie każdy węzeł
+  pokazuje tę nazwę w top-barze swojego web GUI — sprawdzić w każdym projekcie (dolewka, dozownik,
+  termostat, switch timer) i ujednolicić, tak żeby web GUI, panel i VPS pokazywały tę samą nazwę.

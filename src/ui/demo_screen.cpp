@@ -7,6 +7,7 @@
 #include "../lamps/lamp_listener.h"
 #include "../net/network.h"
 #include "lvgl_port.h"
+#include "../gui/fonts.h"
 
 namespace ui {
 
@@ -90,11 +91,11 @@ void createDemoScreen() {
     lv_obj_remove_flag(hdr, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_style_pad_ver(hdr, 0, 0);
     lv_obj_t* name = lv_label_create(hdr);
-    lv_obj_set_style_text_font(name, fonts().title, 0);
+    lv_obj_set_style_text_font(name, gui::fonts().title, 0);
     lv_label_set_text(name, "Panel akwarium");
     lv_obj_align(name, LV_ALIGN_LEFT_MID, 0, 0);
     s_uptime = lv_label_create(hdr);
-    lv_obj_set_style_text_font(s_uptime, fonts().small, 0);
+    lv_obj_set_style_text_font(s_uptime, gui::fonts().small, 0);
     lv_obj_align(s_uptime, LV_ALIGN_RIGHT_MID, 0, 0);
 
     // Raw lamp table (stage 3: passive ESP-NOW listener)
@@ -105,13 +106,13 @@ void createDemoScreen() {
     lv_obj_set_style_pad_row(card, 8, 0);
     lv_obj_set_style_pad_all(card, 10, 0);
     lv_obj_t* t = lv_label_create(card);
-    lv_obj_set_style_text_font(t, fonts().title, 0);
+    lv_obj_set_style_text_font(t, gui::fonts().title, 0);
     lv_label_set_text(t, LV_SYMBOL_WIFI " Lampy — nasłuch ESP-NOW");
 
     s_table = lv_table_create(card);
     lv_obj_set_width(s_table, lv_pct(100));
     lv_obj_set_flex_grow(s_table, 1);
-    lv_obj_set_style_text_font(s_table, fonts().small, 0);
+    lv_obj_set_style_text_font(s_table, gui::fonts().small, 0);
     lv_obj_set_style_pad_ver(s_table, 6, LV_PART_ITEMS);
     lv_obj_set_style_pad_hor(s_table, 6, LV_PART_ITEMS);
     lv_table_set_column_count(s_table, COLS);
@@ -123,7 +124,7 @@ void createDemoScreen() {
 
     s_stats = lv_label_create(card);
     lv_obj_set_width(s_stats, lv_pct(100));
-    lv_obj_set_style_text_font(s_stats, fonts().small, 0);
+    lv_obj_set_style_text_font(s_stats, gui::fonts().small, 0);
     lv_label_set_long_mode(s_stats, LV_LABEL_LONG_DOT);
 
     // Bottom bar: FPS monitor, backlight wake test
