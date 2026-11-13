@@ -82,7 +82,7 @@ najlepiej w wariancie -BOX z obudową.
 | Zasilanie | USB-C 5 V lub DC 7–36 V, ~450 mA przy 5 V | szyna 12/24 V w szafce, osobna gałąź lub filtr LC |
 | RTC | PCF85063 (I2C 0x51, INT na IO6) + ogniwo (tylko ładowalne) | nieużywany (2026-11-12, patrz „Czas”); ogniwa nie trzeba wkładać |
 | DI ×2 | izolowane (PC814), 5–36 V, NPN/PNP → CH422G EXIO0/EXIO5 | kontaktron drzwi — **konflikt z CH422G**, patrz niżej |
-| DO ×2 | open-drain (PC817), 5–36 V, maks. 450 mA/kanał, CH422G OC0/OC1 | buzzer lub lampka alarmu niezależna od ekranu |
+| DO ×2 | open-drain (PC817), 5–36 V, maks. 450 mA/kanał, CH422G OC0/OC1 | nieużywane (2026-11-13): buzzery zostają lokalnie w węzłach |
 | CAN, RS485 | z przełączanymi terminatorami (CAN IO15/16, RS485 IO43/44) | rezerwa: przewodowy fallback dla węzła |
 | Gniazdo TF | microSD (SPI IO11/12/13, CS = EXIO4) | opcjonalnie obrazy firmware do OTA węzłów |
 | Złącze I2C | IO8/IO9, wspólna szyna z GT911, RTC, CH422G | rozszerzenia (np. czujnik zbliżeniowy) |
@@ -150,7 +150,7 @@ pokazuje ekran główny lub ostatnią stronę (do decyzji).
 | Źródło | Sprzęt | Uwagi |
 |---|---|---|
 | Dotyk | brak — **sprawdzone:** GT911 zgłasza dotyk przy wyłączonym podświetleniu | pierwszy dotyk tylko budzi i jest zjadany; potem ~300 ms blokady, żeby nie kliknąć przycisku „w ciemno” |
-| Alarm węzła / brak heartbeatów | brak | budzi ekran i pokazuje alarm; DO z buzzerem niezależnie od ekranu |
+| Alarm węzła / brak heartbeatów | brak | budzi ekran i pokazuje alarm; dźwięk z buzzera węzła (panel bez buzzera, 2026-11-13) |
 | Kontaktron drzwi przez DI0 | kontaktron + źródło 5–36 V (szyna 12/24 V) | odpytywanie przy wygaszonym ekranie sprawdzone (co ~100–200 ms, bez błysków); reakcja na napięcie do sprawdzenia; aktywny stanem niskim |
 | Czujnik zbliżeniowy przez złącze I2C | np. VCNL4040 (0x60) | opcja na później: budzi przy zbliżeniu ręki, bez otwierania drzwi |
 

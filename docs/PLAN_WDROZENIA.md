@@ -99,25 +99,25 @@ Każdy etap kończy się buildem, testem na sprzęcie i commitem.
 | 6 | Sterowanie: Auto / Noc / Test, zmiana programu (dialog), stany pending / rejected | panel | macierz testów niżej — ✅ 2026-11-13 (panel FW 0.6.0; przekazywanie programu lampie, która go pobiera; chwilowy rozjazd 5–8 s po zmianie z web GUI lampy) |
 | 7 | Trzecia lampa: provisioning, OTA, dołączenie do grupy | lampy | automatyczne wykrycie na panelu i w lampach, program pobrany |
 
-Później (poza etapem 1): wygaszacz, DO z buzzerem dla P1, `MANUAL_LEFT_ON`, kolejne węzły, wspólna
+Później (poza etapem 1): wygaszacz, `MANUAL_LEFT_ON`, kolejne węzły, wspólna
 biblioteka i AEAD z migracją lamp.
 
 Etap 1 można robić równolegle z przeglądem tego planu, bo nie zależy od decyzji o protokole.
 
 ## Testy synchronizacji (etap 6–7)
 
-| Scenariusz | Oczekiwane |
-|---|---|
-| Tryb z panelu, wszystkie lampy online | wszystkie lampy przełączone w < 1 s, ACK od każdej, panel pokazuje stan z heartbeatów |
-| Tryb z panelu i inny z web GUI lampy w tej samej sekundzie | wszystkie lampy zbiegają się do jednego trybu (wyższy klucz sesji), panel pokazuje wynik |
-| Lampa offline podczas komendy, potem wraca | panel: pending → brak ACK → `LAMP_OFFLINE`; po powrocie `GROUP_MISMATCH`, wyrównanie ponowną komendą |
-| Restart lampy w trybie Test/Noc | lampa nadrabia `mode_clock`, panel nie traci spójności |
-| Restart panelu | panel odbudowuje stan z heartbeatów w ≤ 15 s, `mode_clock` z heartbeatów, komenda działa od razu |
-| Zmiana programu, gdy jedna lampa go nie ma | ACK „pobieram”, lampa pobiera program od innej, panel pokazuje „pobieranie”, potem aktywny |
-| Program skasowany w web GUI w trakcie wyboru na panelu | ACK „odrzucony”, komunikat na panelu, odświeżenie listy |
-| Restart routera | przerwa w ramkach, po powrocie stan zgodny, bez fałszywych komend |
-| Lampa w awarii FRAM | alarm `FRAM_FAIL` na panelu, lampa nie rozsyła programu ani trybu do innych |
-| Trzecia lampa | wykryta bez konfiguracji, dostaje bibliotekę programów, reaguje na komendy grupy |
+| Scenariusz | Oczekiwane | Wynik |
+|---|---|---|
+| Tryb z panelu, wszystkie lampy online | wszystkie lampy przełączone w < 1 s, ACK od każdej, panel pokazuje stan z heartbeatów | ✅ 2026-11-13 |
+| Tryb z panelu i inny z web GUI lampy w tej samej sekundzie | wszystkie lampy zbiegają się do jednego trybu (wyższy klucz sesji), panel pokazuje wynik | ✅ 2026-11-13 |
+| Lampa offline podczas komendy, potem wraca | panel: pending → brak ACK → `LAMP_OFFLINE`; po powrocie `GROUP_MISMATCH`, wyrównanie ponowną komendą | ✅ 2026-11-13 |
+| Restart lampy w trybie Test/Noc | lampa nadrabia `mode_clock`, panel nie traci spójności | do zrobienia |
+| Restart panelu | panel odbudowuje stan z heartbeatów w ≤ 15 s, `mode_clock` z heartbeatów, komenda działa od razu | ✅ 2026-11-13 |
+| Zmiana programu, gdy jedna lampa go nie ma | ACK „pobieram”, lampa pobiera program od innej, panel pokazuje „pobieranie”, potem aktywny | do zrobienia (przekazywanie programu przez panel) |
+| Program skasowany w web GUI w trakcie wyboru na panelu | ACK „odrzucony”, komunikat na panelu, odświeżenie listy | ✅ 2026-11-13 |
+| Restart routera | przerwa w ramkach, po powrocie stan zgodny, bez fałszywych komend | zaplanowany na 2026-11-14 |
+| Lampa w awarii FRAM | alarm `FRAM_FAIL` na panelu, lampa nie rozsyła programu ani trybu do innych | odłożony bez terminu (wymaga lutowania) |
+| Trzecia lampa | wykryta bez konfiguracji, dostaje bibliotekę programów, reaguje na komendy grupy | etap 7 |
 
 ## Do decyzji
 
@@ -125,4 +125,7 @@ Etap 1 można robić równolegle z przeglądem tego planu, bo nie zależy od dec
       (2026-11-13).
 - [x] Tryb na lampach offline: panel tylko ostrzega, bez automatycznej wysyłki po powrocie (2026-11-13).
       Automatyczne wyrównanie to zmiana zachowania grupy, więc później i świadomie.
-- [ ] Czy panel ma mieć sterowanie pojedynczą lampą (L3)? Propozycja: nie w MVP, tylko podgląd.
+- [x] Sterowanie pojedynczą lampą z panelu (L3): niepotrzebne, panel steruje tylko grupą (2026-11-13).
+- [x] Buzzer: zostają lokalne buzzery w węzłach, panel bez buzzera (wyjścia DO nieużywane). Gdy któryś węzeł
+      piszczy, panel jest pierwszym miejscem do sprawdzenia: alarm P1 budzi ekran i jest na pasku alarmów
+      (2026-11-13).

@@ -76,7 +76,7 @@ Niezależnie od poziomu węzeł waliduje każdą komendę i egzekwuje limity —
 
 | Priorytet | Reakcja | Panel | Przykład |
 |---|---|---|---|
-| P1 krytyczny | natychmiast, sterowanie zablokowane | budzi ekran, DO (buzzer/lampka), czerwony | pusty zbiornik RO, awaria czujnika temp. |
+| P1 krytyczny | natychmiast, sterowanie zablokowane | budzi ekran, czerwony (buzzer lokalnie w węźle) | pusty zbiornik RO, awaria czujnika temp. |
 | P2 wysoki | w ciągu godzin | budzi ekran, czerwony/pomarańczowy | temperatura poza zakresem, limit dobowy |
 | P3 niski | przy okazji | żółty kafelek, bez budzenia | niski zapas, bateria RTC |
 
