@@ -32,7 +32,8 @@ enum FrameType : uint8_t {
     FT_ACK,
     FT_MODE,
     FT_MODE_ACK,
-    FT_COUNT  // number of known types + 1
+    FT_CTRL_HB,  // controller (this panel) heartbeat — lamp FW >= 0.3.0
+    FT_COUNT     // number of known types + 1
 };
 
 enum LampMode : uint8_t { MODE_PROGRAM = 0, MODE_TEST, MODE_NIGHT };
@@ -42,8 +43,8 @@ enum TimeQuality : uint8_t { TQ_NONE = 0, TQ_RTC = 1, TQ_NTP = 2 };
 
 // HbBody.flags
 constexpr uint8_t HB_FLAG_ORPHAN = 0x01;  // active program deleted elsewhere
-constexpr uint8_t HB_FLAG_FRAM_FAIL = 0x02;  // planned (stage 4)
-constexpr uint8_t HB_FLAG_RTC_FAIL = 0x04;   // planned (stage 4)
+constexpr uint8_t HB_FLAG_FRAM_FAIL = 0x02;  // lamp runs from RAM (lamp FW >= 0.3.0)
+constexpr uint8_t HB_FLAG_RTC_FAIL = 0x04;   // DS3231 missing or without valid time (lamp FW >= 0.3.0)
 
 #pragma pack(push, 1)
 struct FrameHdr {
@@ -70,6 +71,12 @@ struct HbBody {
     uint32_t mode_clock;  // missing in old firmware (shorter frame)
 };
 
+struct CtrlHbBody {
+    char name[32];
+    char fw[12];
+    uint32_t ip;
+};
+
 struct ModeBody {
     uint32_t clock;
     uint32_t seq;
@@ -83,5 +90,7 @@ static_assert(sizeof(FrameHdr) == 12, "FrameHdr layout");
 static_assert(sizeof(HbBody) == 100, "HbBody layout");
 static_assert(offsetof(HbBody, mode_clock) == 96, "HbBody layout");
 static_assert(sizeof(ModeBody) == 18, "ModeBody layout");
+static_assert(sizeof(CtrlHbBody) == 48, "CtrlHbBody layout (lamp copy checks the same)");
+static_assert(FT_CTRL_HB == 10, "frame type numbering must match the lamps");
 
 }  // namespace lamps

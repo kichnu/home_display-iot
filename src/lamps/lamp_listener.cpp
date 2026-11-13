@@ -3,12 +3,14 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_random.h>
 #include <freertos/FreeRTOS.h>
 #include <freertos/queue.h>
 #include <mbedtls/md.h>
 #include <sys/time.h>
 
 #include "../net/network.h"
+#include "../version.h"
 #include "wifi_secret.h"
 
 namespace lamps {
@@ -35,14 +37,23 @@ uint32_t s_bootId[MAX_LAMPS];
 uint32_t s_lastSeq[MAX_LAMPS];
 Stats s_stats = {};
 uint32_t s_lastOnlineCheckMs = 0;
+const uint8_t BROADCAST[6] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+uint32_t s_ownBootId = 0;  // our frames: random per boot, like the lamps
+uint32_t s_txSeq = 0;
+uint32_t s_lastCtrlHbMs = 0;
+bool s_wasConnected = false;
 
 void macStr(const uint8_t* m, char* out) {  // 18 B
     snprintf(out, 18, "%02X:%02X:%02X:%02X:%02X:%02X", m[0], m[1], m[2], m[3], m[4], m[5]);
 }
 
+void hmac(const uint8_t* data, size_t len, uint8_t* full) {
+    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), s_key, sizeof(s_key), data, len, full);
+}
+
 bool tagOk(const uint8_t* data, size_t len, const uint8_t* tag) {
     uint8_t full[32];
-    mbedtls_md_hmac(mbedtls_md_info_from_type(MBEDTLS_MD_SHA256), s_key, sizeof(s_key), data, len, full);
+    hmac(data, len, full);
     uint8_t diff = 0;
     for (size_t i = 0; i < TAG_LEN; i++) diff |= full[i] ^ tag[i];
     return diff == 0;
@@ -175,6 +186,33 @@ void checkOnline() {
     }
 }
 
+// Same framing as the lamps: header (random boot_id, rising seq) + body + truncated HMAC
+bool sendFrame(const uint8_t* mac, FrameType type, const void* body, size_t bodyLen) {
+    uint8_t buf[FRAME_MAX];
+    FrameHdr h = {FRAME_MAGIC, FRAME_VERSION, (uint8_t)type, s_ownBootId, ++s_txSeq};
+    size_t n = sizeof(h) + bodyLen;
+    if (n + TAG_LEN > sizeof(buf)) return false;
+    memcpy(buf, &h, sizeof(h));
+    if (bodyLen) memcpy(buf + sizeof(h), body, bodyLen);
+    uint8_t full[32];
+    hmac(buf, n, full);
+    memcpy(buf + n, full, TAG_LEN);
+    if (esp_now_send(mac, buf, n + TAG_LEN) != ESP_OK) {
+        s_stats.txFail++;
+        return false;
+    }
+    return true;
+}
+
+void sendCtrlHeartbeat() {
+    CtrlHbBody b = {};
+    strncpy(b.name, PANEL_NAME, sizeof(b.name) - 1);
+    strncpy(b.fw, PANEL_FW_VERSION, sizeof(b.fw) - 1);
+    b.ip = (uint32_t)WiFi.localIP();
+    if (sendFrame(BROADCAST, FT_CTRL_HB, &b, sizeof(b))) s_stats.txHb++;
+    s_lastCtrlHbMs = millis();
+}
+
 // Wi-Fi task: copy to the queue only
 void onRecv(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
     if (!s_rxQueue || len <= 0 || len > (int)FRAME_MAX) return;
@@ -208,8 +246,17 @@ void begin() {
     }
     s_rxQueue = xQueueCreate(RX_QUEUE_LEN, sizeof(RxItem));
     esp_now_register_recv_cb(onRecv);
+
+    esp_now_peer_info_t bc = {};
+    memcpy(bc.peer_addr, BROADCAST, 6);
+    bc.channel = 0;  // current channel of the STA interface (AP channel)
+    bc.ifidx = WIFI_IF_STA;
+    bc.encrypt = false;  // authenticity from the HMAC, like between the lamps
+    esp_now_add_peer(&bc);
+
+    s_ownBootId = esp_random();
     s_stats.enabled = true;
-    Serial.println("Lamps: ESP-NOW listener ready (passive, channel = Wi-Fi channel)");
+    Serial.println("Lamps: ESP-NOW ready (listener + controller heartbeat, channel = Wi-Fi channel)");
 }
 
 void update() {
@@ -217,6 +264,12 @@ void update() {
     RxItem it;
     for (int i = 0; i < RX_PER_UPDATE && xQueueReceive(s_rxQueue, &it, 0) == pdTRUE; i++) handleFrame(it);
     s_stats.rxDropped = s_rxDropped;
+
+    // Controller heartbeat: right after (re)connecting, then every 15 s. Not before the connection —
+    // the STA is scanning channels then.
+    bool connected = WiFi.status() == WL_CONNECTED;
+    if (connected && (!s_wasConnected || millis() - s_lastCtrlHbMs >= HB_INTERVAL_MS)) sendCtrlHeartbeat();
+    s_wasConnected = connected;
     if (millis() - s_lastOnlineCheckMs >= 1000) {
         s_lastOnlineCheckMs = millis();
         checkOnline();
@@ -246,6 +299,7 @@ const char* timeQualityName(uint8_t q) {
 
 void printTable() {
     const Stats& s = s_stats;
+    Serial.printf("Lamps: tx ctrl HB %lu (fail %lu)\n", (unsigned long)s_stats.txHb, (unsigned long)s_stats.txFail);
     Serial.printf("Lamps: rx ok %lu, bad format %lu, bad HMAC %lu, replay %lu, dropped %lu | HB %lu MODE %lu other %lu\n",
                   (unsigned long)s.rxOk, (unsigned long)s.rxBadFormat, (unsigned long)s.rxBadTag,
                   (unsigned long)s.rxReplay, (unsigned long)s.rxDropped, (unsigned long)s.byType[FT_HB],

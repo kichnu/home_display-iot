@@ -5,8 +5,9 @@ Central touch panel for the aquarium nodes, on the
 (800x480 RGB565 ST7262, GT911 touch, CH422G IO expander). Design notes (Polish):
 `Panel dotykowy ESP-NOW — ustalenia i stack.md`, rollout plan: `docs/PLAN_WDROZENIA.md`.
 
-Current state: stage 3 — Wi-Fi STA, NTP, ArduinoOTA and a passive ESP-NOW listener of the lamps
-(raw lamp table on screen, nothing is sent to the lamps yet).
+Current state: stage 4 — Wi-Fi STA, NTP, ArduinoOTA, ESP-NOW listener of the lamps (raw lamp table on
+screen) and a controller heartbeat (`FT_CTRL_HB`, lamp FW >= 0.3.0 shows "panel: Panel akwarium").
+No commands are sent to the lamps yet.
 
 ## Build / flash
 
@@ -32,7 +33,10 @@ Requires the pioarduino platform (Arduino core 3.x / ESP-IDF 5.x) — set in `pl
 `custom_sdkconfig` (octal PSRAM, code/rodata executed from PSRAM) triggers a hybrid compile of the
 framework libs: a few minutes on all cores, only after changing `custom_sdkconfig` /
 `custom_component_remove`. Run one build at a time (VS Code + terminal in parallel corrupt `.pio`);
-`nice -n 19 pio run -j 6` keeps the PC usable. Without XIP from PSRAM any flash write (NVS on Wi-Fi
+`nice -n 19 pio run -j 6` keeps the PC usable. The panel has its own package dir
+(`packages_dir = ~/.platformio-panel/packages`, ~6 GB): the hybrid compile rewrites the framework libs
+in place, and the lamps use the same pioarduino platform — a shared dir meant a re-download or a
+full recompile on every switch between the projects. Without XIP from PSRAM any flash write (NVS on Wi-Fi
 init, OTA) panics in the RGB bounce-buffer ISR.
 Serial goes over native USB (USB-CDC on boot). If the port does not show up, hold BOOT and press RESET.
 
@@ -53,7 +57,8 @@ Serial goes over native USB (USB-CDC on boot). If the port does not show up, hol
   `(boot_id, seq)` per sender, lamp online = heartbeat within 45 s. Wire format copied from
   `led_lamp_aquarium-iot` (`lamp_proto.h`, sizes checked at compile time). Only broadcasts are
   visible (heartbeats, live mode frames). Without NTP the clock is taken from a lamp heartbeat with
-  NTP time.
+  NTP time. The panel broadcasts `FT_CTRL_HB` (name, FW from `src/version.h`, IP) every 15 s while
+  connected: lamps register it as a controller, not as a lamp.
 - Backlight is on/off only (CH422G EXIO2). The CH422G keeps its outputs across an ESP32 reset, so the
   backlight is switched off before every restart (OTA, `r`) and stays off at boot until the first
   frame is drawn — otherwise the un-driven panel shows ~1 s of garbage. With the backlight off the first touch only wakes the
@@ -63,8 +68,9 @@ Serial goes over native USB (USB-CDC on boot). If the port does not show up, hol
 
 - Header: Wi-Fi state (IP, RSSI) and NTP clock (Europe/Warsaw), uptime until the clock is set.
 - "Lampy — nasłuch ESP-NOW": one row per sender (name, MAC tail, online + seconds since the last
-  heartbeat, mode with `*` = orphaned program, active program, lamp time source, RSSI) and counters
-  (accepted, bad HMAC, replays, bad format, dropped, heartbeats, live mode frames). A growing
+  heartbeat, mode with flags — `*` orphaned program, `F` FRAM error, `R` RTC error — active program,
+  lamp time source, RSSI) and counters (accepted, bad HMAC, replays, bad format, dropped, controller
+  heartbeats sent / send errors). A growing
   "zły HMAC" means a different Wi-Fi password (= group key) than the lamps.
 - Bottom bar: FPS / CPU overlay, spinner (smoothness check with the radio on), backlight off.
 - OTA upload shows a progress modal on the screen.

@@ -1,7 +1,8 @@
 #pragma once
-// Stage 3: passive listener of the lamps' ESP-NOW protocol. Sends nothing.
-// RX callback (Wi-Fi task) only queues; update() from loop() verifies HMAC + replay and keeps the
-// lamp table. Frames between lamps sent by unicast are not visible here — only broadcasts
+// Lamp ESP-NOW protocol on the panel: listener (stage 3) + controller heartbeat FT_CTRL_HB (stage 4),
+// broadcast every 15 s while Wi-Fi is connected, so the lamps register the panel as a controller.
+// No commands yet. RX callback (Wi-Fi task) only queues; update() from loop() verifies HMAC + replay
+// and keeps the lamp table. Frames between lamps sent by unicast are not visible here — only broadcasts
 // (heartbeats, live Test Light mode frames).
 
 #include <stdint.h>
@@ -33,6 +34,8 @@ struct Stats {
     uint32_t rxReplay;
     uint32_t rxDropped;    // RX queue full
     uint32_t byType[FT_COUNT];
+    uint32_t txHb;         // controller heartbeats sent
+    uint32_t txFail;       // esp_now_send errors
 };
 
 void begin();   // after net::begin() (WiFi.mode(STA))

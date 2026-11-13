@@ -50,8 +50,11 @@ void refreshLamps() {
             snprintf(buf, sizeof(buf), "%s %lus", l->online ? "online" : "OFFLINE",
                      (unsigned long)((now - l->lastHbMs) / 1000));
             lv_table_set_cell_value(s_table, row, 2, buf);
-            snprintf(buf, sizeof(buf), "%s%s", lamps::modeName(l->hb.mode),
-                     (l->hb.flags & lamps::HB_FLAG_ORPHAN) ? "*" : "");
+            // * orphaned program, F FRAM error, R RTC error (heartbeat flags)
+            snprintf(buf, sizeof(buf), "%s%s%s%s", lamps::modeName(l->hb.mode),
+                     (l->hb.flags & lamps::HB_FLAG_ORPHAN) ? "*" : "",
+                     (l->hb.flags & lamps::HB_FLAG_FRAM_FAIL) ? " F" : "",
+                     (l->hb.flags & lamps::HB_FLAG_RTC_FAIL) ? " R" : "");
             lv_table_set_cell_value(s_table, row, 3, buf);
             lv_table_set_cell_value(s_table, row, 4, l->hb.active_name);
             lv_table_set_cell_value(s_table, row, 5, lamps::timeQualityName(l->hb.time_q));
@@ -67,10 +70,10 @@ void refreshLamps() {
         lv_label_set_text(s_stats, LV_SYMBOL_WARNING " ESP-NOW wyłączone (brak hasła Wi-Fi w buildzie)");
         return;
     }
-    lv_label_set_text_fmt(s_stats, "rx ok %lu · zły HMAC %lu · powtórki %lu · format %lu · zgubione %lu · HB %lu · MODE %lu",
+    lv_label_set_text_fmt(s_stats, "rx ok %lu · zły HMAC %lu · powtórki %lu · format %lu · zgubione %lu · tx HB %lu (błędy %lu)",
                           (unsigned long)st.rxOk, (unsigned long)st.rxBadTag, (unsigned long)st.rxReplay,
-                          (unsigned long)st.rxBadFormat, (unsigned long)st.rxDropped,
-                          (unsigned long)st.byType[lamps::FT_HB], (unsigned long)st.byType[lamps::FT_MODE]);
+                          (unsigned long)st.rxBadFormat, (unsigned long)st.rxDropped, (unsigned long)st.txHb,
+                          (unsigned long)st.txFail);
 }
 }  // namespace
 

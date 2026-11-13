@@ -1,8 +1,8 @@
-// Touch panel firmware for Waveshare ESP32-S3-Touch-LCD-4.3B — stage 3: passive lamp listener.
+// Touch panel firmware for Waveshare ESP32-S3-Touch-LCD-4.3B — stage 4: lamp listener + controller heartbeat.
 //
 // Boot: I2C scan, CH422G (backlight off until the first frame), RGB panel with two PSRAM framebuffers, GT911,
 // LVGL 9 port (DIRECT mode, TinyTTF Noto fonts), test screen, Wi-Fi STA + NTP + ArduinoOTA,
-// passive ESP-NOW listener of the lamps (HMAC + replay check, lamp table).
+// ESP-NOW listener of the lamps (HMAC + replay check, lamp table) and controller heartbeat FT_CTRL_HB.
 //
 // Serial commands: i = memory info, b = toggle backlight, w = network / time info,
 // l = lamp table, r = restart.
@@ -16,6 +16,7 @@
 #include "gt911.h"
 #include "lamps/lamp_listener.h"
 #include "lcd.h"
+#include "version.h"
 #include "net/network.h"
 #include "ui/demo_screen.h"
 #include "ui/lvgl_port.h"
@@ -64,7 +65,7 @@ void setup() {
     Serial.begin(115200);
     uint32_t t0 = millis();
     while (!Serial && millis() - t0 < 1500) delay(10);
-    Serial.println("\n=== home_display-iot: stage 3 (lamp listener) ===");
+    Serial.println("\n=== home_display-iot " PANEL_FW_VERSION ": stage 4 (controller heartbeat) ===");
     Serial.printf("Chip %s rev %d, PSRAM %u B\n", ESP.getChipModel(), ESP.getChipRevision(), ESP.getPsramSize());
 
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, I2C_FREQ_HZ);
