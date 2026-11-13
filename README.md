@@ -5,9 +5,10 @@ Central touch panel for the aquarium nodes, on the
 (800x480 RGB565 ST7262, GT911 touch, CH422G IO expander). Design notes (Polish):
 `Panel dotykowy ESP-NOW — ustalenia i stack.md`, rollout plan: `docs/PLAN_WDROZENIA.md`.
 
-Current state: stage 4 — Wi-Fi STA, NTP, ArduinoOTA, ESP-NOW listener of the lamps (raw lamp table on
-screen) and a controller heartbeat (`FT_CTRL_HB`, lamp FW >= 0.3.0 shows "panel: Panel akwarium").
-No commands are sent to the lamps yet.
+Current state: stage 5 — Wi-Fi STA, NTP, ArduinoOTA, ESP-NOW listener of the lamps with a controller
+heartbeat (`FT_CTRL_HB`, lamp FW >= 0.3.0 shows "panel: Panel akwarium") and the panel GUI over live
+lamp data: lamp group, program catalog read from a lamp, alarms. Read only: no commands are sent to the
+lamps yet (stage 6).
 
 ## Build / flash
 
@@ -62,8 +63,8 @@ Scripted run without a person (screenshots for review, PPM = window pixels inclu
 
 Screens: overview (tiles per node / group), lamp group (rows per lamp, Auto / Noc / Test,
 Program…), program list with confirmation, alarm list; alarm strip under the top bar only while
-alarms are active; screensaver after 60 s without input. On the panel the same code is wired to the
-lamp protocol in stage 5.
+alarms are active; screensaver after 60 s without input. On the panel the same code runs over the
+model built from the lamp protocol (`src/app/panel_model.cpp`).
 
 ## Stack
 
@@ -89,19 +90,20 @@ lamp protocol in stage 5.
   frame is drawn — otherwise the un-driven panel shows ~1 s of garbage. With the backlight off the first touch only wakes the
   screen and is not passed to the UI.
 
-## Test screen
+## Panel GUI
 
-- Header: Wi-Fi state (IP, RSSI) and NTP clock (Europe/Warsaw), uptime until the clock is set.
-- "Lampy — nasłuch ESP-NOW": one row per sender (name, MAC tail, online + seconds since the last
-  heartbeat, mode with flags — `*` orphaned program, `F` FRAM error, `R` RTC error — active program,
-  lamp time source, RSSI) and counters (accepted, bad HMAC, replays, bad format, dropped, controller
-  heartbeats sent / send errors). A growing
-  "zły HMAC" means a different Wi-Fi password (= group key) than the lamps.
-- Bottom bar: FPS / CPU overlay, spinner (smoothness check with the radio on), backlight off.
+- Lamp names = device names from the lamps' provisioning (heartbeat), sorted by name.
+- Group mode / program = the variant held by most online lamps; any difference = "rozjazd" (P3).
+- Program list: when `catalog_hash` in the heartbeats changes, the panel asks one lamp with working
+  FRAM for its program ids (`FT_LIST_REQ`) and reads each unknown name from chunk 0 of the program
+  (`FT_PROG_REQ`); retry after 10 s on failure.
+- Alarms: P2 lamp offline, lamp FRAM error, no lamp heartbeat 60 s after boot, no Wi-Fi 30 s after boot;
+  P3 lamp RTC error, orphaned program, mode / program mismatch, no NTP time 2 min after boot.
 - OTA upload shows a progress modal on the screen.
 
 Serial commands: `i` memory info, `b` toggle backlight, `w` network / time info, `l` lamp table with
-all heartbeat fields, `r` restart.
+all heartbeat fields and counters (a growing "bad HMAC" = different Wi-Fi password than the lamps),
+`f` toggle FPS / CPU overlay, `r` restart.
 
 The original bring-up test (patterns, touch paint, DI read test) is in git history (`27efbea`) and
 in `~/Dokumenty/My_apps/TOOLS/test_ESP32-S3-Touch-LCD-4.3B/`.

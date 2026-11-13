@@ -43,6 +43,22 @@ uint32_t s_txSeq = 0;
 uint32_t s_lastCtrlHbMs = 0;
 bool s_wasConnected = false;
 
+// Catalog fetch (one request at a time, source = one lamp)
+constexpr uint32_t CAT_LIST_TIMEOUT_MS = 3000;
+constexpr uint32_t CAT_NAME_TIMEOUT_MS = 1000;
+constexpr uint32_t CAT_RETRY_MS = 10000;  // after a failed attempt
+constexpr int CAT_NAME_TRIES = 3;
+enum class CatState : uint8_t { Idle, WaitList, Names };
+Catalog s_cat = {};
+CatState s_catState = CatState::Idle;
+uint8_t s_catSrc[6];
+uint32_t s_catReqHash = 0;
+uint32_t s_catReqMs = 0;
+uint32_t s_catFailMs = 0;
+bool s_catFailed = false;
+uint64_t s_catNameId = 0;  // outstanding FT_PROG_REQ
+int s_catNameTries = 0;
+
 void macStr(const uint8_t* m, char* out) {  // 18 B
     snprintf(out, 18, "%02X:%02X:%02X:%02X:%02X:%02X", m[0], m[1], m[2], m[3], m[4], m[5]);
 }
@@ -109,6 +125,7 @@ void onHeartbeat(Lamp& l, const uint8_t* body, size_t blen) {
     l.haveHb = true;
     l.hbHasModeClock = blen >= sizeof(HbBody);
     l.lastHbMs = millis();
+    l.lastHbUtc = net::timeValid() || time(nullptr) >= UTC_VALID_MIN ? time(nullptr) : 0;
     l.hbCount++;
     if (!l.online) {
         l.online = true;
@@ -121,6 +138,9 @@ void onHeartbeat(Lamp& l, const uint8_t* body, size_t blen) {
     }
     maybeTakeTime(b);
 }
+
+void onList(const uint8_t* mac, const uint8_t* body, size_t blen);
+void onProgData(const uint8_t* mac, const uint8_t* body, size_t blen);
 
 void handleFrame(const RxItem& it) {
     if (it.len < sizeof(FrameHdr) + TAG_LEN) {
@@ -169,6 +189,12 @@ void handleFrame(const RxItem& it) {
                               modeName(b.mode), (unsigned long)b.clock, (unsigned long)b.seq, b.ack);
             }
             break;
+        case FT_LIST:
+            onList(it.mac, body, blen);
+            break;
+        case FT_PROG_DATA:
+            onProgData(it.mac, body, blen);
+            break;
         default:
             break;
     }
@@ -211,6 +237,131 @@ void sendCtrlHeartbeat() {
     b.ip = (uint32_t)WiFi.localIP();
     if (sendFrame(BROADCAST, FT_CTRL_HB, &b, sizeof(b))) s_stats.txHb++;
     s_lastCtrlHbMs = millis();
+}
+
+bool ensurePeer(const uint8_t* mac) {
+    if (esp_now_is_peer_exist(mac)) return true;
+    esp_now_peer_info_t p = {};
+    memcpy(p.peer_addr, mac, 6);
+    p.channel = 0;
+    p.ifidx = WIFI_IF_STA;
+    p.encrypt = false;
+    return esp_now_add_peer(&p) == ESP_OK;
+}
+
+// ---- Program catalog ----
+
+void catFail(const char* why) {
+    Serial.printf("Lamps: catalog fetch failed (%s), retry in %lu s\n", why, (unsigned long)(CAT_RETRY_MS / 1000));
+    s_catState = CatState::Idle;
+    s_cat.busy = false;
+    s_catFailed = true;
+    s_catFailMs = millis();
+}
+
+// Lamp to ask: online, with a heartbeat and working FRAM (a RAM-only lamp does not answer FT_LIST_REQ)
+const Lamp* catalogSource() {
+    for (const auto& l : s_lamps)
+        if (l.used && l.online && l.haveHb && !(l.hb.flags & HB_FLAG_FRAM_FAIL)) return &l;
+    return nullptr;
+}
+
+void sendNameReq(uint64_t id) {
+    ProgReqBody b = {id, 0};
+    s_catNameId = id;
+    s_catReqMs = millis();
+    sendFrame(s_catSrc, FT_PROG_REQ, &b, sizeof(b));
+}
+
+void catNextName() {
+    for (int i = 0; i < s_cat.count; i++) {
+        if (s_cat.e[i].named) continue;
+        s_catNameTries = 0;
+        sendNameReq(s_cat.e[i].id);
+        return;
+    }
+    s_cat.valid = true;
+    s_cat.hash = s_catReqHash;
+    s_cat.busy = false;
+    s_catState = CatState::Idle;
+    s_catNameId = 0;
+    Serial.printf("Lamps: catalog %08lX, %d programs\n", (unsigned long)s_cat.hash, s_cat.count);
+}
+
+void onList(const uint8_t* mac, const uint8_t* body, size_t blen) {
+    if (s_catState != CatState::WaitList || memcmp(mac, s_catSrc, 6) != 0 || blen < 4) return;
+    ListBody b = {};
+    memcpy(&b, body, blen < sizeof(b) ? blen : sizeof(b));
+    if (b.kind != 0) return;  // tombstones: not needed on the panel
+    if (b.n > LIST_IDS || blen < 4 + b.n * sizeof(uint64_t)) return;
+
+    // Keep the names already known, drop programs gone from the list
+    Catalog old = s_cat;
+    s_cat.count = 0;
+    for (int i = 0; i < b.n; i++) {
+        CatalogEntry& e = s_cat.e[s_cat.count++];
+        e = {};
+        e.id = b.ids[i];
+        for (int j = 0; j < old.count; j++)
+            if (old.e[j].id == e.id && old.e[j].named) e = old.e[j];
+    }
+    s_cat.valid = false;
+    s_catState = CatState::Names;
+    catNextName();
+}
+
+void onProgData(const uint8_t* mac, const uint8_t* body, size_t blen) {
+    if (s_catState != CatState::Names || memcmp(mac, s_catSrc, 6) != 0 || blen < offsetof(ProgDataBody, data)) return;
+    ProgDataBody b = {};
+    memcpy(&b, body, blen < sizeof(b) ? blen : sizeof(b));
+    if (b.id != s_catNameId || b.chunk != 0) return;
+    int idx = -1;
+    for (int i = 0; i < s_cat.count; i++)
+        if (s_cat.e[i].id == b.id) idx = i;
+    if (idx < 0) return;
+    if (b.total == 0) {  // deleted meanwhile: drop it, the next heartbeat brings a new catalog_hash
+        s_cat.e[idx] = s_cat.e[--s_cat.count];
+    } else if (b.len >= PROGRAM_HEADER_SIZE && blen >= offsetof(ProgDataBody, data) + PROGRAM_HEADER_SIZE) {
+        CatalogEntry& e = s_cat.e[idx];
+        memcpy(e.name, b.data + PROGRAM_NAME_OFFSET, PROGRAM_NAME_LEN);
+        e.name[PROGRAM_NAME_LEN - 1] = '\0';
+        e.named = true;
+    } else {
+        return;
+    }
+    catNextName();
+}
+
+void catalogUpdate() {
+    uint32_t now = millis();
+    switch (s_catState) {
+        case CatState::Idle: {
+            const Lamp* src = catalogSource();
+            if (!src || (s_cat.valid && s_cat.hash == src->hb.catalog_hash)) return;
+            if (s_catFailed && now - s_catFailMs < CAT_RETRY_MS) return;
+            if (!ensurePeer(src->mac)) return;
+            memcpy(s_catSrc, src->mac, 6);
+            s_catReqHash = src->hb.catalog_hash;
+            s_catReqMs = now;
+            s_catFailed = false;
+            s_cat.busy = true;
+            s_catState = CatState::WaitList;
+            sendFrame(s_catSrc, FT_LIST_REQ, nullptr, 0);
+            Serial.printf("Lamps: catalog %08lX requested from %s\n", (unsigned long)s_catReqHash, src->hb.name);
+            break;
+        }
+        case CatState::WaitList:
+            if (now - s_catReqMs >= CAT_LIST_TIMEOUT_MS) catFail("no FT_LIST");
+            break;
+        case CatState::Names:
+            if (now - s_catReqMs < CAT_NAME_TIMEOUT_MS) break;
+            if (++s_catNameTries >= CAT_NAME_TRIES) {
+                catFail("no program name");
+                break;
+            }
+            sendNameReq(s_catNameId);
+            break;
+    }
 }
 
 // Wi-Fi task: copy to the queue only
@@ -274,11 +425,14 @@ void update() {
         s_lastOnlineCheckMs = millis();
         checkOnline();
     }
+    if (connected) catalogUpdate();
 }
 
 const Lamp* lamp(int i) { return (i >= 0 && i < MAX_LAMPS && s_lamps[i].used) ? &s_lamps[i] : nullptr; }
 
 const Stats& stats() { return s_stats; }
+
+const Catalog& catalog() { return s_cat; }
 
 const char* modeName(uint8_t mode) {
     switch (mode) {

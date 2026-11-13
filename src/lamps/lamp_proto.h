@@ -21,6 +21,13 @@ constexpr uint32_t ONLINE_MS = 45000;  // 3 heartbeats, same as the lamps
 
 constexpr size_t PROGRAM_NAME_LEN = 24;  // with '\0'
 constexpr size_t NUM_CHANNELS = 4;
+constexpr size_t LIST_IDS = 24;     // ids per FT_LIST page
+constexpr size_t CHUNK_DATA = 192;  // FT_PROG_DATA payload
+
+// Program blob = ProgramHeader (64 B, lamp_types.h) + curves. Chunk 0 holds the whole header, so the
+// panel reads program names from chunk 0 only.
+constexpr size_t PROGRAM_NAME_OFFSET = 32;
+constexpr size_t PROGRAM_HEADER_SIZE = 64;
 
 enum FrameType : uint8_t {
     FT_HB = 1,
@@ -77,6 +84,28 @@ struct CtrlHbBody {
     uint32_t ip;
 };
 
+struct ListBody {
+    uint8_t kind;  // 0 = live program ids, 1 = tombstones
+    uint8_t page;
+    uint8_t pages;
+    uint8_t n;
+    uint64_t ids[LIST_IDS];  // only n sent
+};
+
+struct ProgReqBody {
+    uint64_t id;
+    uint8_t chunk;
+};
+
+struct ProgDataBody {
+    uint64_t id;
+    uint16_t total;  // 0 = no such program
+    uint8_t chunk;
+    uint8_t chunks;
+    uint8_t len;
+    uint8_t data[CHUNK_DATA];  // only len sent
+};
+
 struct ModeBody {
     uint32_t clock;
     uint32_t seq;
@@ -91,6 +120,9 @@ static_assert(sizeof(HbBody) == 100, "HbBody layout");
 static_assert(offsetof(HbBody, mode_clock) == 96, "HbBody layout");
 static_assert(sizeof(ModeBody) == 18, "ModeBody layout");
 static_assert(sizeof(CtrlHbBody) == 48, "CtrlHbBody layout (lamp copy checks the same)");
+static_assert(offsetof(ListBody, ids) == 4, "ListBody layout");
+static_assert(sizeof(ProgReqBody) == 9, "ProgReqBody layout");
+static_assert(offsetof(ProgDataBody, data) == 13, "ProgDataBody layout");
 static_assert(FT_CTRL_HB == 10, "frame type numbering must match the lamps");
 
 }  // namespace lamps

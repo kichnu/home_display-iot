@@ -1,29 +1,31 @@
-// Touch panel firmware for Waveshare ESP32-S3-Touch-LCD-4.3B — stage 4: lamp listener + controller heartbeat.
+// Touch panel firmware for Waveshare ESP32-S3-Touch-LCD-4.3B — stage 5: panel GUI with live lamp data (read only).
 //
 // Boot: I2C scan, CH422G (backlight off until the first frame), RGB panel with two PSRAM framebuffers, GT911,
-// LVGL 9 port (DIRECT mode, TinyTTF Noto fonts), test screen, Wi-Fi STA + NTP + ArduinoOTA,
-// ESP-NOW listener of the lamps (HMAC + replay check, lamp table) and controller heartbeat FT_CTRL_HB.
+// LVGL 9 port (DIRECT mode, TinyTTF Noto fonts), Wi-Fi STA + NTP + ArduinoOTA, ESP-NOW listener of the lamps
+// (HMAC + replay check, lamp table, program catalog) with controller heartbeat FT_CTRL_HB, GUI (src/gui/,
+// same code as the PC simulator) over the model built in src/app/panel_model.
 //
 // Serial commands: i = memory info, b = toggle backlight, w = network / time info,
-// l = lamp table, r = restart.
+// l = lamp table, f = toggle FPS / CPU overlay, r = restart.
 
 #include <Arduino.h>
 #include <Wire.h>
 #include <esp_heap_caps.h>
 
+#include "app/panel_model.h"
 #include "board_pins.h"
 #include "ch422g.h"
 #include "gt911.h"
+#include "gui/gui.h"
 #include "lamps/lamp_listener.h"
 #include "lcd.h"
 #include "version.h"
 #include "net/network.h"
-#include "ui/demo_screen.h"
 #include "ui/lvgl_port.h"
 
 namespace {
 
-uint32_t g_lastTick = 0;
+bool g_perfShown = false;
 
 void i2cScan() {
     Serial.print("I2C:");
@@ -52,6 +54,10 @@ void handleSerial() {
             net::printInfo();
         } else if (c == 'l') {
             lamps::printTable();
+        } else if (c == 'f') {
+            g_perfShown = !g_perfShown;
+            if (g_perfShown) lv_sysmon_show_performance(nullptr);
+            else lv_sysmon_hide_performance(nullptr);
         } else if (c == 'r') {
             Serial.println("Restart");
             ui::restart();
@@ -65,7 +71,7 @@ void setup() {
     Serial.begin(115200);
     uint32_t t0 = millis();
     while (!Serial && millis() - t0 < 1500) delay(10);
-    Serial.println("\n=== home_display-iot " PANEL_FW_VERSION ": stage 4 (controller heartbeat) ===");
+    Serial.println("\n=== home_display-iot " PANEL_FW_VERSION ": stage 5 (GUI, live lamp data) ===");
     Serial.printf("Chip %s rev %d, PSRAM %u B\n", ESP.getChipModel(), ESP.getChipRevision(), ESP.getPsramSize());
 
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, I2C_FREQ_HZ);
@@ -89,7 +95,9 @@ void setup() {
         Serial.println("LVGL: display create failed, halting");
         while (true) delay(1000);
     }
-    ui::createDemoScreen();
+    app::update();
+    gui::begin(&app::model(), &app::commands());
+    lv_sysmon_hide_performance(nullptr);  // Serial 'f' shows it
     lv_refr_now(nullptr);  // first full frame into the framebuffer, then light the screen
     ui::setBacklight(true);
     net::begin();
@@ -100,11 +108,9 @@ void setup() {
 void loop() {
     net::update();
     lamps::update();
+    app::update();
     ui::update();
+    gui::update();
     handleSerial();
-    if (millis() - g_lastTick >= 1000) {
-        g_lastTick = millis();
-        ui::demoTick();
-    }
     delay(2);
 }
