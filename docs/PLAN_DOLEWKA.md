@@ -122,7 +122,7 @@ Każdy etap kończy się buildem, testem na sprzęcie i commitem.
 
 | # | Etap | Repo | Kryterium |
 |---|---|---|---|
-| D0 | Plan, odpowiedzi na pytania, aktualizacja `docs/nodes/dolewka.md` | panel | ten plik zaakceptowany |
+| D0 | Plan, odpowiedzi na pytania, aktualizacja `docs/nodes/dolewka.md` | panel | ten plik zaakceptowany — ✅ 2026-11-14 (lista punktów v2) |
 | D1 | `TO_STATUS` w dolewce (tylko nadawanie), `setSleep(false)`, `node_status`, `error_code` | dolewka | OTA, ramki widoczne w logu panelu, `rx_bad = 0`, dolewka działa jak wcześniej |
 | D2 | Ekrany w symulatorze: kafelek L1, ekran L2 (odczyty, sterowanie wyszarzone), alarmy | panel | układ zaakceptowany na PC |
 | D3 | Adapter `src/topoff/` + model + UI odczytu na panelu, `TOPOFF_OFFLINE` | panel | stan zgodny z web GUI dolewki, alarm po odłączeniu |
