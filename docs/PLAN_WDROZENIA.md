@@ -97,7 +97,7 @@ Każdy etap kończy się buildem, testem na sprzęcie i commitem.
 | 4a | Symulacja GUI na komputerze (LVGL, ten sam kod ekranów) przed implementacją na panelu — ustalone 2026-11-13 | panel | układ L1/L2, pasek alarmów, lista programów zaakceptowane na PC — ✅ 2026-11-13 (`sim/`, kod ekranów w `src/gui/`; nazwy lamp z provisioningu) |
 | 5 | Model + UI odczytu: kafelek L1, ekran grupy L2, alarmy lamp, pasek alarmów, lista programów (cache nazw) | panel | stan zgodny z web GUI lamp, alarm `LAMP_OFFLINE` po odłączeniu lampy — ✅ 2026-11-13 (panel FW 0.5.0, katalog programów z `FT_LIST_REQ` + nazwy z chunku 0 `FT_PROG_REQ`) |
 | 6 | Sterowanie: Auto / Noc / Test, zmiana programu (dialog), stany pending / rejected | panel | macierz testów niżej — ✅ 2026-11-13 (panel FW 0.6.0; przekazywanie programu lampie, która go pobiera; chwilowy rozjazd 5–8 s po zmianie z web GUI lampy) |
-| 7 | Trzecia lampa: provisioning, OTA, dołączenie do grupy | lampy | automatyczne wykrycie na panelu i w lampach, program pobrany |
+| 7 | Trzecia lampa: provisioning, OTA, dołączenie do grupy | lampy | automatyczne wykrycie na panelu i w lampach, program pobrany — czeka na części i montaż (stan 2026-11-14) |
 
 Później (poza etapem 1): wygaszacz, `MANUAL_LEFT_ON`, kolejne węzły, wspólna
 biblioteka i AEAD z migracją lamp.
@@ -111,11 +111,11 @@ Etap 1 można robić równolegle z przeglądem tego planu, bo nie zależy od dec
 | Tryb z panelu, wszystkie lampy online | wszystkie lampy przełączone w < 1 s, ACK od każdej, panel pokazuje stan z heartbeatów | ✅ 2026-11-13 |
 | Tryb z panelu i inny z web GUI lampy w tej samej sekundzie | wszystkie lampy zbiegają się do jednego trybu (wyższy klucz sesji), panel pokazuje wynik | ✅ 2026-11-13 |
 | Lampa offline podczas komendy, potem wraca | panel: pending → brak ACK → `LAMP_OFFLINE`; po powrocie `GROUP_MISMATCH`, wyrównanie ponowną komendą | ✅ 2026-11-13 |
-| Restart lampy w trybie Test/Noc | lampa nadrabia `mode_clock`, panel nie traci spójności | do zrobienia |
+| Restart lampy w trybie Test/Noc | lampa nadrabia `mode_clock`, panel nie traci spójności | ✅ 2026-11-14 — lampa wraca w Auto (zgodnie z USTALENIA lamp: tryb nie przeżywa restartu), panel: `LAMP_OFFLINE` → `GROUP_MISMATCH`, wyrównanie komendą grupy; zostaje tak |
 | Restart panelu | panel odbudowuje stan z heartbeatów w ≤ 15 s, `mode_clock` z heartbeatów, komenda działa od razu | ✅ 2026-11-13 |
-| Zmiana programu, gdy jedna lampa go nie ma | ACK „pobieram”, lampa pobiera program od innej, panel pokazuje „pobieranie”, potem aktywny | do zrobienia (przekazywanie programu przez panel) |
+| Zmiana programu, gdy jedna lampa go nie ma | ACK „pobieram”, lampa pobiera program od innej, panel pokazuje „pobieranie”, potem aktywny | ✅ 2026-11-14 (nierozstrzygnięty) — synchronizacja lampa–lampa zaszła od razu po powrocie B, nie da się stwierdzić, czy zadziałało przekazywanie przez panel; nie krytyczne, wrócić przy obserwacji problemu |
 | Program skasowany w web GUI w trakcie wyboru na panelu | ACK „odrzucony”, komunikat na panelu, odświeżenie listy | ✅ 2026-11-13 |
-| Restart routera | przerwa w ramkach, po powrocie stan zgodny, bez fałszywych komend | zaplanowany na 2026-11-14 |
+| Restart routera | przerwa w ramkach, po powrocie stan zgodny, bez fałszywych komend | odłożony bez terminu (wróci użytkownik) |
 | Lampa w awarii FRAM | alarm `FRAM_FAIL` na panelu, lampa nie rozsyła programu ani trybu do innych | odłożony bez terminu (wymaga lutowania) |
 | Trzecia lampa | wykryta bez konfiguracji, dostaje bibliotekę programów, reaguje na komendy grupy | etap 7 |
 
