@@ -84,6 +84,9 @@ void otaBegin() {
     ArduinoOTA.onEnd([]() {
         Serial.println("=== OTA OK, restarting ===");
         Serial.flush();
+        // ArduinoOTA has just sent "OK" to espota and closed the socket; restarting right away can lose
+        // that reply (host: "Error receiving result: timed out") — wait like the library does (100 ms)
+        delay(100);
         ui::restart();
     });
     ArduinoOTA.onError([](ota_error_t error) {
