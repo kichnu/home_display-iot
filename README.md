@@ -46,7 +46,8 @@ Serial goes over native USB (USB-CDC on boot). If the port does not show up, hol
 
 The panel GUI (`src/gui/`, LVGL only) also runs on the PC in an 800x480 SDL2 window, with mock data
 (`sim/mock.cpp`): mouse = touch, keys toggle states (lamp offline, FRAM/RTC error, mode mismatch,
-alarms, command without ACK, no Wi-Fi, ...; `h` prints the list).
+alarms, command without ACK, no Wi-Fi, top-off reservoir level / daily limit / no ToF reading / offline /
+auto cycle, ...; `h` prints the list). The top-off screen (tile "Dolewka") answers commands from the mock.
 
 ```sh
 sudo apt install libsdl2-dev                     # once

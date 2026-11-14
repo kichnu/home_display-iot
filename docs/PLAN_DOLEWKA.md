@@ -66,8 +66,9 @@ przyjętych), `RESET_BLOCKED` (faza zapisu), `RESERVOIR_EMPTY`, `STALE_NONCE`, `
   przerywa sesję, odmowa przy pustym zbiorniku.
 - Panel (2026-11-14): bargraf 1–10 porcji przesuwany palcem, obok liczba porcji i ml (`n × dawka`); przycisk ON
   wysyła `PORTIONS(n)` od razu, bez okna potwierdzenia (wybór na bargrafie jest świadomy). Przy n > zapas porcji ostrzeżenie (kolor bargrafu ponad zapasem).
-- W trakcie sesji: „porcja 2 z 3”, pozostały czas, duży STOP (safety 0, bez dialogu); „+” dokłada porcje do
-  trwającej sesji.
+- W trakcie sesji: „porcja 2 z 3” na przycisku, duży STOP (safety 0, bez dialogu) w miejscu ON; bargraf pokazuje
+  porcje wykonane / bieżącą / pozostałe. Dokładanie porcji do trwającej sesji — nie w MVP (najpierw STOP).
+- Pusty zbiornik (`LOW_RESERVOIR`): bargraf i ON zablokowane z podpowiedzią (węzeł i tak odmawia).
 - W Auto przycisk wyszarzony z podpowiedzią „tylko w trybie Serwis”.
 
 ## Poziom wody w zbiorniku — propozycja widoku
@@ -128,7 +129,7 @@ Każdy etap kończy się buildem, testem na sprzęcie i commitem.
 |---|---|---|---|
 | D0 | Plan, odpowiedzi na pytania, aktualizacja `docs/nodes/dolewka.md` | panel | ten plik zaakceptowany — ✅ 2026-11-14 (lista punktów v2) |
 | D1 | `TO_STATUS` w dolewce (tylko nadawanie), `setSleep(false)`, `node_status`, `error_code` | dolewka | OTA, ramki widoczne w logu panelu, `rx_bad = 0`, dolewka działa jak wcześniej — ✅ 2026-11-14 (dolewka FW 1.1.0, panel 0.6.1: status co 5 s, bad HMAC 0, wartości zgodne z web GUI, zmiana Auto/Serwis od razu) |
-| D2 | Ekrany w symulatorze: kafelek L1, ekran L2 (odczyty, sterowanie wyszarzone), alarmy | panel | układ zaakceptowany na PC |
+| D2 | Ekrany w symulatorze: kafelek L1, ekran L2 (odczyty, sterowanie wyszarzone), alarmy | panel | układ zaakceptowany na PC — ✅ 2026-11-14 (pasek zbiornika w strefach kolorów, bargraf porcji + ON/STOP, okno limitu, kasowanie alarmu) |
 | D3 | Adapter `src/topoff/` + model + UI odczytu na panelu, `TOPOFF_OFFLINE` | panel | stan zgodny z web GUI dolewki, alarm po odłączeniu |
 | D4 | `TO_CMD` / `TO_ACK` w dolewce, nonce, `manualPortionsAdd(n)`, `SET_DAILY_LIMIT` | dolewka | komendy z narzędzia testowego/panelu, powtórka odrzucona |
 | D5 | Sterowanie na panelu: Auto/Serwis, porcje (bargraf + ON) + STOP, kasowanie alarmu, limit dobowy | panel | macierz testów niżej |

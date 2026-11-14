@@ -87,6 +87,12 @@ public:
         s_lastBuildMs = 0;
     }
     void refreshPrograms() override {}  // catalog follows catalog_hash by itself
+    // Top-off commands: stage D4/D5 (the screen is not reachable on the panel before D3)
+    void topoffSetAuto(bool) override {}
+    void topoffPortions(uint8_t) override {}
+    void topoffStop() override {}
+    void topoffReset() override {}
+    void topoffSetLimit(uint16_t) override {}
 
 private:
     static void refused() {

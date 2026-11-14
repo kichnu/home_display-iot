@@ -40,6 +40,7 @@ const char* screenTitle(Screen s) {
         case Screen::Lamps: return "Lampy";
         case Screen::Programs: return "Program lamp";
         case Screen::Alarms: return "Alarmy";
+        case Screen::Topoff: return "Dolewka";
     }
     return "";
 }
@@ -100,12 +101,14 @@ void refreshScreen() {
         case Screen::Lamps: lamps::refresh(); break;
         case Screen::Programs: programs::refresh(); break;
         case Screen::Alarms: alarms::refresh(); break;
+        case Screen::Topoff: topoff::refresh(); break;
     }
 }
 
 void goBack() {
     switch (g.screen) {
         case Screen::Lamps: navigate(Screen::Overview); break;
+        case Screen::Topoff: navigate(Screen::Overview); break;
         case Screen::Programs: navigate(Screen::Lamps); break;
         case Screen::Alarms: navigate(s_prevScreen == Screen::Alarms ? Screen::Overview : s_prevScreen); break;
         default: break;
@@ -273,6 +276,16 @@ Sev lampGroupSev() {
     return worst;
 }
 
+Sev topoffSev() {
+    if (!g.m->topoff.present || !g.m->topoff.online) return Sev::Offline;
+    Sev worst = Sev::Ok;
+    for (int i = 0; i < g.m->alarmCount; i++) {
+        const Alarm& a = g.m->alarms[i];
+        if (a.target == Screen::Topoff && (uint8_t)a.prio > (uint8_t)worst) worst = a.prio;
+    }
+    return worst;
+}
+
 int lampsOnline() {
     int n = 0;
     for (int i = 0; i < g.m->lamps.count; i++)
@@ -299,13 +312,17 @@ lv_obj_t* box(lv_obj_t* parent) {
 }
 
 void confirm(const char* title, const char* text, const char* okLabel, void (*onOk)()) {
+    dialog(title, okLabel, onOk);
+    lv_msgbox_add_text(s_confirm, text);
+}
+
+lv_obj_t* dialog(const char* title, const char* okLabel, void (*onOk)()) {
     if (s_confirm) lv_msgbox_close(s_confirm);
     s_confirmOk = onOk;
     s_confirm = lv_msgbox_create(nullptr);  // modal, on the top layer
     lv_obj_set_width(s_confirm, 560);
     lv_obj_t* t = lv_msgbox_add_title(s_confirm, title);
     lv_obj_set_style_text_font(t, fonts().title, 0);
-    lv_msgbox_add_text(s_confirm, text);
     lv_obj_t* cancel = lv_msgbox_add_footer_button(s_confirm, "Anuluj");
     lv_obj_t* ok = lv_msgbox_add_footer_button(s_confirm, okLabel);
     for (lv_obj_t* b : {cancel, ok}) {
@@ -331,6 +348,7 @@ void confirm(const char* title, const char* text, const char* okLabel, void (*on
         s_confirm = nullptr;
         if (s_confirmOk) s_confirmOk();
     }, LV_EVENT_CLICKED, nullptr);
+    return lv_msgbox_get_content(s_confirm);
 }
 
 void toast(const char* text, Sev sev) {
@@ -402,6 +420,7 @@ void navigate(Screen s) {
         case Screen::Lamps: lamps::build(); break;
         case Screen::Programs: programs::build(); break;
         case Screen::Alarms: alarms::build(); break;
+        case Screen::Topoff: topoff::build(); break;
     }
     refreshShell();
 }

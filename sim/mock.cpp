@@ -24,7 +24,33 @@ constexpr uint32_t CMD_DELAY_MS = 900;
 constexpr uint32_t PROGRAMS_SLOW_MS = 2000;
 
 // Alarm slots (since_ index): first time a condition was seen
-enum { A_OFF0, A_OFF1, A_FRAM0, A_RTC1, A_MISMATCH, A_DOSING, A_TOPOFF, A_WIFI };
+enum { A_OFF0, A_OFF1, A_FRAM0, A_RTC1, A_MISMATCH, A_DOSING, A_WIFI, A_T_OFFLINE, A_T_BIT0 };  // + 9 top-off bits
+
+// Top-off simulation: shortened times so a session is watchable
+constexpr uint32_t T_PORTION_MS = 4000;  // node: dose from the calibration (~30 s)
+constexpr uint32_t T_PAUSE_MS = 2000;    // node: 5 s
+constexpr uint32_t T_CYCLE_MS = 6000;    // auto top-off pumping phase
+constexpr uint32_t T_CMD_MS = 900;
+constexpr int T_CAPACITY_PORTIONS = 82;  // alarm level to the marker
+constexpr float T_RATE_ML_H = 92.0f;
+const int T_LEVELS[] = {42, 25, 12};     // key 6: reservoir fill %
+
+struct TopoffAlarmDef {
+    uint16_t bit;
+    Sev prio;
+    const char* text;
+};
+const TopoffAlarmDef T_ALARMS[] = {
+    {TOPOFF_AL_LOW_RESERVOIR, Sev::P1, "zbiornik RO pusty — pompa zatrzymana"},
+    {TOPOFF_AL_DAILY_LIMIT, Sev::P1, "limit dobowy osiągnięty — dolewanie zablokowane"},
+    {TOPOFF_AL_RATE_ANOMALY, Sev::P1, "anomalia tempa dolewania"},
+    {TOPOFF_AL_NO_TOPOFF, Sev::P1, "24 h bez dolewki"},
+    {TOPOFF_AL_HW_FAULT, Sev::P1, "awaria FRAM / RTC"},
+    {TOPOFF_AL_RESERVE_LOW, Sev::P3, "zbiornik RO: rezerwa"},
+    {TOPOFF_AL_LEVEL_NO_READING, Sev::P3, "brak odczytu poziomu zbiornika"},
+    {TOPOFF_AL_LEVEL_SENSOR_FAULT, Sev::P3, "awaria czujnika poziomu"},
+    {TOPOFF_AL_UNCALIBRATED, Sev::P3, "pompa nieskalibrowana"},
+};
 
 void copy(char* dst, size_t n, const char* src) { snprintf(dst, n, "%s", src); }
 }  // namespace
@@ -34,9 +60,11 @@ void Mock::help() {
         "\nGUI simulator — keys (focus on the window):\n"
         "  1  Lampa czarna offline / online       2  Lampa biała: awaria FRAM\n"
         "  3  Lampa czarna: awaria RTC            4  rozjazd: Lampa czarna w trybie Noc\n"
-        "  5  Dozownik: alarm P1                  6  Dolewka: ostrzeżenie P3\n"
+        "  5  Dozownik: alarm P1                  6  Dolewka: poziom zbiornika 42 / 25 / 12 %%\n"
         "  7  następne polecenie bez ACK          8  Wi-Fi panelu wył. / wł.\n"
         "  9  czas nieważny / ważny               0  wolne pobieranie listy programów\n"
+        "  d  Dolewka: limit dobowy (alarm P1)    e  Dolewka: brak odczytu ToF (szacunek)\n"
+        "  o  Dolewka offline / online            p  Dolewka: cykl dolewki auto\n"
         "  s  wygaszacz teraz                     h  ta pomoc\n"
         "Screensaver also after 60 s without mouse input.\n\n");
 }
@@ -62,11 +90,12 @@ void Mock::init() {
 
     m.tileCount = 5;
     NodeTile* t = m.tiles;
-    t[0] = {"Dolewka", Sev::Ok, "poziom OK", "dziś 1,2 l", false};
-    t[1] = {"Dozownik", Sev::Ok, "4 kanały OK", "następna dawka 18:00", false};
-    t[2] = {"Termostat", Sev::Ok, "25,4 °C", "grzałka wył.", false};
-    t[3] = {"Timer", Sev::Ok, "3/4 włączone", "CO₂ do 20:00", false};
-    t[4] = {"Panel", Sev::Ok, "Wi-Fi -59 dBm", "FW 0.4.0", false};
+    t[0] = {"Dolewka", Sev::Ok, "", "", true, Screen::Topoff};
+    t[1] = {"Dozownik", Sev::Ok, "4 kanały OK", "następna dawka 18:00", false, Screen::Overview};
+    t[2] = {"Termostat", Sev::Ok, "25,4 °C", "grzałka wył.", false, Screen::Overview};
+    t[3] = {"Timer", Sev::Ok, "3/4 włączone", "CO₂ do 20:00", false, Screen::Overview};
+    t[4] = {"Panel", Sev::Ok, "Wi-Fi -59 dBm", "FW 0.6.1", false, Screen::Overview};
+    topoffInit();
     fillPrograms();
     derive();
 }
@@ -94,6 +123,7 @@ void Mock::derive() {
     LampGroup& lg = m.lamps;
     time_t now = time(nullptr);
     for (int i = 0; i < 2; i++) lg.lamps[i].online = !offline_[i];
+    topoffDerive();
 
     // Group mode / program: first online lamp (majority with two lamps is the same thing)
     int ref = -1;
@@ -136,7 +166,12 @@ void Mock::derive() {
     add(!m.wifi, A_WIFI, Sev::P2, "Panel", "brak Wi-Fi", Screen::Overview);
     add(lg.lamps[1].flags & LAMP_FLAG_RTC, A_RTC1, Sev::P3, "Lampa czarna", "awaria zegara RTC", Screen::Lamps);
     add(lg.mismatch, A_MISMATCH, Sev::P3, "Lampy", "rozjazd trybu lub programu", Screen::Lamps);
-    add(topoffP3_, A_TOPOFF, Sev::P3, "Dolewka", "zbiornik RODI poniżej 20 %", Screen::Overview);
+    // Top-off: offline = P2, otherwise one alarm per bit
+    const TopoffView& tv = m.topoff;
+    add(tv.present && !tv.online, A_T_OFFLINE, Sev::P2, "Dolewka", "brak łączności", Screen::Topoff);
+    for (int i = 0; i < (int)(sizeof(T_ALARMS) / sizeof(T_ALARMS[0])); i++)
+        add(tv.online && (tv.alarms & T_ALARMS[i].bit), A_T_BIT0 + i, T_ALARMS[i].prio, "Dolewka", T_ALARMS[i].text,
+            Screen::Topoff);
     std::stable_sort(m.alarms, m.alarms + m.alarmCount, [](const Alarm& a, const Alarm& b) {
         if (a.prio != b.prio) return (uint8_t)a.prio > (uint8_t)b.prio;
         return a.since < b.since;
@@ -144,8 +179,27 @@ void Mock::derive() {
 
     m.tiles[1].status = dosingP1_ ? Sev::P1 : Sev::Ok;
     copy(m.tiles[1].line1, sizeof(m.tiles[1].line1), dosingP1_ ? "alarm: pompa 2" : "4 kanały OK");
-    m.tiles[0].status = topoffP3_ ? Sev::P3 : Sev::Ok;
-    copy(m.tiles[0].line1, sizeof(m.tiles[0].line1), topoffP3_ ? "RODI < 20 %" : "poziom OK");
+    // Top-off tile: worst alarm of the node
+    {
+        NodeTile& t = m.tiles[0];
+        Sev worst = Sev::Ok;
+        for (int i = 0; i < m.alarmCount; i++)
+            if (m.alarms[i].target == Screen::Topoff && (uint8_t)m.alarms[i].prio > (uint8_t)worst)
+                worst = m.alarms[i].prio;
+        t.status = tv.online ? worst : Sev::Offline;
+        if (!tv.online) {
+            copy(t.line1, sizeof(t.line1), "Brak łączności");
+            copy(t.line2, sizeof(t.line2), "");
+        } else {
+            snprintf(t.line1, sizeof(t.line1), "RO %u %% · ~%d h", tv.resPct, (tv.resHoursX10 + 5) / 10);
+            if (tv.manualSession)
+                snprintf(t.line2, sizeof(t.line2), "Porcje: %u z %u", tv.manualDone + 1, tv.manualDone + tv.manualLeft);
+            else if (!tv.autoMode)
+                snprintf(t.line2, sizeof(t.line2), "Serwis · Auto za %u min", tv.serviceLeftMin);
+            else
+                snprintf(t.line2, sizeof(t.line2), "24 h: %u / %u ml", tv.volume24h, tv.dailyLimit);
+        }
+    }
     m.tiles[4].status = m.wifi ? Sev::Ok : Sev::P2;
     copy(m.tiles[4].line1, sizeof(m.tiles[4].line1), m.wifi ? "Wi-Fi -59 dBm" : "brak Wi-Fi");
     m.version++;
@@ -153,6 +207,7 @@ void Mock::derive() {
 
 void Mock::tick(uint32_t nowMs) {
     nowMs_ = nowMs;
+    topoffTick(nowMs);
     LampGroup& lg = model.lamps;
     if (nowMs - lastHbMs_ >= 15000) {  // heartbeats: lastSeen of online lamps
         lastHbMs_ = nowMs;
@@ -228,6 +283,193 @@ void Mock::refreshPrograms() {
     model.version++;
 }
 
+// ---- top-off ----
+
+void Mock::topoffInit() {
+    TopoffView& t = model.topoff;
+    t.present = true;
+    t.online = true;
+    t.lastSeen = time(nullptr);
+    copy(t.name, sizeof(t.name), "DOLEWKA");
+    t.autoMode = true;
+    t.state = TA_IDLE;
+    t.volume24h = 750;
+    t.dailyLimit = 4000;
+    t.dose = 250;
+    t.resPct = (uint8_t)T_LEVELS[0];
+    t.resReservePct = 30;
+    t.resAlarmPct = 15;
+    topoffDerive();
+}
+
+void Mock::topoffDerive() {
+    TopoffView& t = model.topoff;
+    t.online = !topoffOffline_;
+    if (t.online) t.lastSeen = time(nullptr);
+    int above = (int)t.resPct - t.resAlarmPct;
+    t.resPortions = above > 0 ? (uint16_t)(above * T_CAPACITY_PORTIONS / 100) : 0;
+    t.resHoursX10 = (int16_t)(t.resPortions * t.dose * 10 / T_RATE_ML_H);
+    t.resEstimated = topoffEstimated_;
+    t.resZone = t.resPct <= t.resAlarmPct ? TZ_ALARM : t.resPct <= t.resReservePct ? TZ_RESERVE : TZ_OK;
+    if (t.resZone == TZ_ALARM) topoffLowLatched_ = true;  // latched until reset with a refilled reservoir
+
+    uint16_t a = 0;
+    if (topoffLowLatched_) a |= TOPOFF_AL_LOW_RESERVOIR;
+    if (topoffDailyLimit_) a |= TOPOFF_AL_DAILY_LIMIT;
+    if (t.resZone == TZ_RESERVE) a |= TOPOFF_AL_RESERVE_LOW;
+    if (topoffEstimated_) a |= TOPOFF_AL_LEVEL_NO_READING;
+    t.alarms = a;
+    if (topoffDailyLimit_ || topoffLowLatched_) t.state = TA_ERROR;
+    else if (t.state == TA_ERROR) t.state = TA_IDLE;
+
+    // Node rule: Fault > Alarm (P1) > Service > Warning (P3) > OK
+    if (a & TOPOFF_AL_HW_FAULT) t.status = TS_FAULT;
+    else if (a & TOPOFF_AL_RESETTABLE) t.status = TS_ALARM;
+    else if (!t.autoMode) t.status = TS_SERVICE;
+    else if (a) t.status = TS_WARNING;
+    else t.status = TS_OK;
+}
+
+void Mock::topoffSend(TopoffPending p) {
+    TopoffView& t = model.topoff;
+    if (t.pending != TopoffPending::None || !t.online) return;
+    t.pending = p;
+    topoffCmdDueMs_ = nowMs_ + T_CMD_MS;
+    model.version++;
+}
+
+void Mock::topoffTick(uint32_t nowMs) {
+    TopoffView& t = model.topoff;
+    bool changed = false;
+
+    // Command answer (status / ACK from the node)
+    if (topoffCmdDueMs_ && (int32_t)(nowMs - topoffCmdDueMs_) >= 0) {
+        topoffCmdDueMs_ = 0;
+        TopoffPending p = t.pending;
+        t.pending = TopoffPending::None;
+        changed = true;
+        if (rejectNext_ || !t.online) {
+            rejectNext_ = false;
+            gui::toast("Dolewka: brak potwierdzenia — polecenie nie wykonane", Sev::P2);
+        } else {
+            switch (p) {
+                case TopoffPending::Mode:
+                    t.autoMode = t.pendingAuto;
+                    if (t.autoMode && t.manualSession) {  // the switch to Auto stops the session
+                        t.manualSession = false;
+                        t.manualLeft = 0;
+                        t.pumpOn = false;
+                    }
+                    topoffServiceMs_ = nowMs;
+                    t.serviceLeftMin = t.autoMode ? 0 : 180;
+                    gui::toast(t.autoMode ? "Dolewka: tryb Auto" : "Dolewka: tryb Serwis (powrót do Auto po 180 min)");
+                    break;
+                case TopoffPending::Portions:
+                    if (t.autoMode) {
+                        gui::toast("Dolewka odrzuciła: porcje tylko w trybie Serwis", Sev::P2);
+                    } else if (topoffLowLatched_) {
+                        gui::toast("Dolewka odrzuciła: zbiornik RO pusty", Sev::P2);
+                    } else {
+                        t.manualSession = true;
+                        t.manualDone = 0;
+                        t.manualLeft = t.pendingPortions;
+                        t.pumpOn = true;
+                        topoffPause_ = false;
+                        topoffPhaseMs_ = nowMs + T_PORTION_MS;
+                    }
+                    break;
+                case TopoffPending::Stop:
+                    t.manualSession = false;
+                    t.manualLeft = 0;
+                    t.pumpOn = false;
+                    gui::toast("Dolewka: porcje zatrzymane");
+                    break;
+                case TopoffPending::Reset:
+                    topoffDailyLimit_ = false;
+                    if (topoffLowLatched_ && t.resPct > t.resAlarmPct + 2) topoffLowLatched_ = false;
+                    gui::toast(topoffLowLatched_ ? "Skasowano — alarm zbiornika trwa do uzupełnienia"
+                                                 : "Dolewka: alarmy skasowane",
+                               topoffLowLatched_ ? Sev::P3 : Sev::Ok);
+                    break;
+                case TopoffPending::Limit: {
+                    t.dailyLimit = t.pendingLimit;
+                    char msg[64];
+                    snprintf(msg, sizeof(msg), "Dolewka: limit dobowy %u ml", t.dailyLimit);
+                    gui::toast(msg);
+                    break;
+                }
+                default: break;
+            }
+        }
+    }
+
+    // Manual session: portion → pause → portion …
+    if (t.manualSession && (int32_t)(nowMs - topoffPhaseMs_) >= 0) {
+        changed = true;
+        if (!topoffPause_) {
+            t.pumpOn = false;
+            t.manualDone++;
+            t.manualLeft--;
+            if (t.resPct > 0) t.resPct--;  // ~one portion of the reservoir
+            if (t.manualLeft == 0) t.manualSession = false;
+            topoffPause_ = true;
+            topoffPhaseMs_ = nowMs + T_PAUSE_MS;
+        } else {
+            topoffPause_ = false;
+            t.pumpOn = true;
+            topoffPhaseMs_ = nowMs + T_PORTION_MS;
+        }
+    }
+
+    // Auto top-off cycle (key p)
+    if (t.state == TA_PUMPING) {
+        if ((int32_t)(nowMs - topoffPhaseMs_) >= 0) {
+            t.state = TA_IDLE;
+            t.pumpOn = false;
+            t.volume24h += t.dose;
+            if (t.resPct > 0) t.resPct--;
+            changed = true;
+        } else {
+            uint16_t rem = (uint16_t)((topoffPhaseMs_ - nowMs + 999) / 1000);
+            if (rem != t.phaseRemainingS) {
+                t.phaseRemainingS = rem;
+                changed = true;
+            }
+        }
+    }
+
+    // Service Mode countdown (1 min per real minute)
+    if (!t.autoMode) {
+        uint32_t el = (nowMs - topoffServiceMs_) / 60000;
+        uint16_t left = el >= 180 ? 0 : (uint16_t)(180 - el);
+        if (left != t.serviceLeftMin) {
+            t.serviceLeftMin = left;
+            changed = true;
+        }
+    }
+
+    if (changed) derive();
+}
+
+void Mock::topoffSetAuto(bool on) {
+    model.topoff.pendingAuto = on;
+    topoffSend(TopoffPending::Mode);
+}
+
+void Mock::topoffPortions(uint8_t n) {
+    model.topoff.pendingPortions = n;
+    topoffSend(TopoffPending::Portions);
+}
+
+void Mock::topoffStop() { topoffSend(TopoffPending::Stop); }
+
+void Mock::topoffReset() { topoffSend(TopoffPending::Reset); }
+
+void Mock::topoffSetLimit(uint16_t ml) {
+    model.topoff.pendingLimit = ml;
+    topoffSend(TopoffPending::Limit);
+}
+
 void Mock::key(char k) {
     LampGroup& lg = model.lamps;
     switch (k) {
@@ -239,7 +481,26 @@ void Mock::key(char k) {
         case '3': lg.lamps[1].flags ^= LAMP_FLAG_RTC; break;
         case '4': lg.lamps[1].mode = lg.lamps[1].mode == MODE_NIGHT ? lg.lamps[0].mode : (uint8_t)MODE_NIGHT; break;
         case '5': dosingP1_ = !dosingP1_; break;
-        case '6': topoffP3_ = !topoffP3_; break;
+        case '6':
+            topoffLevel_ = (topoffLevel_ + 1) % 3;
+            model.topoff.resPct = (uint8_t)T_LEVELS[topoffLevel_];
+            break;
+        case 'd':
+            topoffDailyLimit_ = !topoffDailyLimit_;
+            if (topoffDailyLimit_) model.topoff.volume24h = model.topoff.dailyLimit;
+            break;
+        case 'e': topoffEstimated_ = !topoffEstimated_; break;
+        case 'o':
+            topoffOffline_ = !topoffOffline_;
+            if (!topoffOffline_) model.topoff.lastSeen = time(nullptr);
+            break;
+        case 'p':
+            if (model.topoff.autoMode && model.topoff.state == TA_IDLE && !topoffDailyLimit_ && !topoffLowLatched_) {
+                model.topoff.state = TA_PUMPING;
+                model.topoff.pumpOn = true;
+                topoffPhaseMs_ = nowMs_ + T_CYCLE_MS;
+            }
+            break;
         case '7':
             rejectNext_ = !rejectNext_;
             printf("next command %s\n", rejectNext_ ? "without ACK from Lampa czarna" : "normal");

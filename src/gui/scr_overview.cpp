@@ -29,6 +29,7 @@ void setTile(Tile& t, Sev sev, const char* l1, const char* l2) {
 void onTile(lv_event_t* e) {
     int i = (int)(intptr_t)lv_event_get_user_data(e);
     if (i == 0) navigate(Screen::Lamps);
+    else if (g.m->tiles[i - 1].hasScreen) navigate(g.m->tiles[i - 1].target);
     else toast("Ekran tego węzła powstanie w kolejnych etapach");
 }
 
