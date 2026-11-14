@@ -18,6 +18,7 @@
 #include "gt911.h"
 #include "gui/gui.h"
 #include "lamps/lamp_listener.h"
+#include "topoff/topoff_listener.h"
 #include "lcd.h"
 #include "version.h"
 #include "net/network.h"
@@ -54,6 +55,8 @@ void handleSerial() {
             net::printInfo();
         } else if (c == 'l') {
             lamps::printTable();
+        } else if (c == 't') {
+            topoff::printStatus();
         } else if (c == 'f') {
             g_perfShown = !g_perfShown;
             if (g_perfShown) lv_sysmon_show_performance(nullptr);
@@ -71,7 +74,7 @@ void setup() {
     Serial.begin(115200);
     uint32_t t0 = millis();
     while (!Serial && millis() - t0 < 1500) delay(10);
-    Serial.println("\n=== home_display-iot " PANEL_FW_VERSION ": stage 6 (GUI, lamp control) ===");
+    Serial.println("\n=== home_display-iot " PANEL_FW_VERSION ": stage 6 + D1 (GUI, lamp control, top-off status listener) ===");
     Serial.printf("Chip %s rev %d, PSRAM %u B\n", ESP.getChipModel(), ESP.getChipRevision(), ESP.getPsramSize());
 
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, I2C_FREQ_HZ);
@@ -102,6 +105,7 @@ void setup() {
     ui::setBacklight(true);
     net::begin();
     lamps::begin();
+    topoff::begin();
     printMemory();
 }
 

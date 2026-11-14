@@ -10,6 +10,7 @@
 #include <sys/time.h>
 
 #include "../net/network.h"
+#include "../topoff/topoff_listener.h"
 #include "lamp_internal.h"
 #include "../version.h"
 #include "wifi_secret.h"
@@ -153,6 +154,10 @@ void handleFrame(const RxItem& it) {
     size_t n = it.len - TAG_LEN;
     FrameHdr h;
     memcpy(&h, it.data, sizeof(h));
+    if (h.magic == topoff::FRAME_MAGIC) {  // top-off node: same radio, own protocol and key
+        topoff::handleFrame(it.mac, it.rssi, it.data, it.len);
+        return;
+    }
     if (h.magic != FRAME_MAGIC || h.version != FRAME_VERSION) {
         s_stats.rxBadFormat++;
         return;

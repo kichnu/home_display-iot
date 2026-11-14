@@ -116,6 +116,10 @@ Po resecie ACK mówi, co zostało (np. alarm zbiornika trwa do uzupełnienia) �
 Przed startem w repo dolewki: nieśledzony `docs/ZGODNOSC_REGUL.md` do commita lub decyzji; testy HW z §8 planu
 rezerwy w toku — nie blokują, ale ESP-NOW dochodzi do tego samego firmware.
 
+Odłożone (2026-11-14): lampy liczą ramki dolewki (inny `magic`) jako błędne — `rx_bad` w web GUI lamp rośnie
+o ~1 co 5 s. Poprawka w lampach (obcy `magic` ignorowany albo liczony osobno) + OTA obu lamp — później,
+razem z kolejnym węzłem albo zmianą w lampach.
+
 ## Etapy
 
 Każdy etap kończy się buildem, testem na sprzęcie i commitem.
@@ -123,7 +127,7 @@ Każdy etap kończy się buildem, testem na sprzęcie i commitem.
 | # | Etap | Repo | Kryterium |
 |---|---|---|---|
 | D0 | Plan, odpowiedzi na pytania, aktualizacja `docs/nodes/dolewka.md` | panel | ten plik zaakceptowany — ✅ 2026-11-14 (lista punktów v2) |
-| D1 | `TO_STATUS` w dolewce (tylko nadawanie), `setSleep(false)`, `node_status`, `error_code` | dolewka | OTA, ramki widoczne w logu panelu, `rx_bad = 0`, dolewka działa jak wcześniej |
+| D1 | `TO_STATUS` w dolewce (tylko nadawanie), `setSleep(false)`, `node_status`, `error_code` | dolewka | OTA, ramki widoczne w logu panelu, `rx_bad = 0`, dolewka działa jak wcześniej — ✅ 2026-11-14 (dolewka FW 1.1.0, panel 0.6.1: status co 5 s, bad HMAC 0, wartości zgodne z web GUI, zmiana Auto/Serwis od razu) |
 | D2 | Ekrany w symulatorze: kafelek L1, ekran L2 (odczyty, sterowanie wyszarzone), alarmy | panel | układ zaakceptowany na PC |
 | D3 | Adapter `src/topoff/` + model + UI odczytu na panelu, `TOPOFF_OFFLINE` | panel | stan zgodny z web GUI dolewki, alarm po odłączeniu |
 | D4 | `TO_CMD` / `TO_ACK` w dolewce, nonce, `manualPortionsAdd(n)`, `SET_DAILY_LIMIT` | dolewka | komendy z narzędzia testowego/panelu, powtórka odrzucona |

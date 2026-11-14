@@ -8,6 +8,8 @@ Central touch panel for the aquarium nodes, on the
 Current state: stage 6 — Wi-Fi STA, NTP, ArduinoOTA, ESP-NOW with the lamps as a controller
 (`FT_CTRL_HB`, lamp FW >= 0.3.0 shows "panel: Panel akwarium") and the panel GUI over live lamp data:
 lamp group, program catalog read from a lamp, alarms, group control (Auto / Noc / Test, program change).
+Top-off node (stage D1, `docs/PLAN_DOLEWKA.md`): status received over ESP-NOW and logged on Serial, no
+screen yet.
 
 ## Build / flash
 
@@ -108,7 +110,7 @@ model built from the lamp protocol (`src/app/panel_model.cpp`).
 
 Serial commands: `i` memory info, `b` toggle backlight, `w` network / time info, `l` lamp table with
 all heartbeat fields and counters (a growing "bad HMAC" = different Wi-Fi password than the lamps),
-`f` toggle FPS / CPU overlay, `r` restart.
+`t` top-off status and counters, `f` toggle FPS / CPU overlay, `r` restart.
 
 The original bring-up test (patterns, touch paint, DI read test) is in git history (`27efbea`) and
 in `~/Dokumenty/My_apps/TOOLS/test_ESP32-S3-Touch-LCD-4.3B/`.
