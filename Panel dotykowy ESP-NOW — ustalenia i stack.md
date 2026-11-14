@@ -373,6 +373,12 @@ Zmienione 2026-11-12: start od lamp przez istniejący protokół ESP-NOW lamp, a
 (AEAD, `ParamDesc` po radiu) dopiero po działającym panelu. Plan etapów, kryteria i testy:
 `docs/PLAN_WDROZENIA.md`.
 
+Ustalone 2026-11-14 (dolewka, `docs/PLAN_DOLEWKA.md`): kolejne węzły (dolewka, dozownik, termostat, switch
+timer) podłączamy tak samo jak lampy — własny protokół węzła na ESP-NOW, HMAC-SHA256 z kluczem z hasła Wi-Fi
+i osobnym kontekstem per węzeł, `boot_id` + `seq`, a komendy dodatkowo z jednorazowym `cmd_nonce` z ostatniego
+statusu węzła (ochrona przed odtworzeniem nagranej ramki). W panelu adapter per węzeł i ekran pisany ręcznie.
+Wspólna biblioteka (AEAD, parowanie, `ParamDesc` po radiu) zostaje celem docelowym, bez terminu.
+
 Poprzednia kolejność (2026-10-23), do wglądu: wspólna biblioteka → plan kanałów → `ParamDesc`
 w DOLEWCE → generator stron w symulatorze → bring-up płytki → integracja DOLEWKA, DOZOWNIK, lampy.
 
