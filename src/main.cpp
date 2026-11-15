@@ -74,7 +74,7 @@ void setup() {
     Serial.begin(115200);
     uint32_t t0 = millis();
     while (!Serial && millis() - t0 < 1500) delay(10);
-    Serial.println("\n=== home_display-iot " PANEL_FW_VERSION ": stage 6 + D1 (GUI, lamp control, top-off status listener) ===");
+    Serial.println("\n=== home_display-iot " PANEL_FW_VERSION ": stage 6 + D3 (GUI, lamp control, top-off status read only) ===");
     Serial.printf("Chip %s rev %d, PSRAM %u B\n", ESP.getChipModel(), ESP.getChipRevision(), ESP.getPsramSize());
 
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, I2C_FREQ_HZ);

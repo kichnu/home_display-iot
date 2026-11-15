@@ -3,7 +3,8 @@
 // confirmation), daily limit (dialog), "Kasuj alarm" (dialog), manual portions: bargraph 1–10 moved
 // with the finger + ON (no confirmation), STOP during the session.
 // Every control shows "sent" right after the tap (accent outline) and takes its new state only from
-// the node's status / ACK (TopoffView::pending).
+// the node's status / ACK (TopoffView::pending). Without TopoffView::controls (panel before stage D5)
+// the screen is read only: controls greyed out.
 
 #include <stdio.h>
 #include <string.h>
@@ -58,9 +59,12 @@ bool online() { return tv().present && tv().online; }
 
 bool busy() { return tv().pending != TopoffPending::None; }
 
+// Commands can be sent: node online and the adapter supports them
+bool ctl() { return online() && tv().controls; }
+
 // Node refuses manual portions in Auto and with an empty reservoir (LOW_RESERVOIR) — panel shows why
 bool portionsEnabled() {
-    return online() && !tv().autoMode && !busy() && !(tv().alarms & TOPOFF_AL_LOW_RESERVOIR);
+    return ctl() && !tv().autoMode && !busy() && !(tv().alarms & TOPOFF_AL_LOW_RESERVOIR);
 }
 
 uint16_t limitMin() {
@@ -134,17 +138,17 @@ void setSent(lv_obj_t* o, bool on) { lv_obj_set_style_border_width(o, on ? 4 : 0
 // ---- controls ----
 
 void onAuto(lv_event_t*) {
-    if (!online() || busy() || tv().autoMode) return;
+    if (!ctl() || busy() || tv().autoMode) return;
     g.cmd->topoffSetAuto(true);
 }
 
 void onService(lv_event_t*) {
-    if (!online() || busy() || !tv().autoMode) return;
+    if (!ctl() || busy() || !tv().autoMode) return;
     g.cmd->topoffSetAuto(false);
 }
 
 void onOn(lv_event_t*) {
-    if (!online() || busy()) return;
+    if (!ctl() || busy()) return;
     if (tv().manualSession) {
         g.cmd->topoffStop();  // STOP: safety 0
         return;
@@ -154,11 +158,11 @@ void onOn(lv_event_t*) {
 }
 
 void resetOk() {
-    if (online() && !busy()) g.cmd->topoffReset();
+    if (ctl() && !busy()) g.cmd->topoffReset();
 }
 
 void onReset(lv_event_t*) {
-    if (!online() || busy() || !(tv().alarms & TOPOFF_AL_RESETTABLE)) return;
+    if (!ctl() || busy() || !(tv().alarms & TOPOFF_AL_RESETTABLE)) return;
     char text[400] = "";
     for (int i = 0; i < g.m->alarmCount; i++) {
         const Alarm& a = g.m->alarms[i];
@@ -188,11 +192,11 @@ void limitStep(lv_event_t* e) {
 
 void limitOk() {
     s_limitValue = nullptr;
-    if (online() && !busy() && s_limitEdit != tv().dailyLimit) g.cmd->topoffSetLimit(s_limitEdit);
+    if (ctl() && !busy() && s_limitEdit != tv().dailyLimit) g.cmd->topoffSetLimit(s_limitEdit);
 }
 
 void onLimit(lv_event_t*) {
-    if (!online() || busy()) return;
+    if (!ctl() || busy()) return;
     s_limitEdit = tv().dailyLimit;
     lv_obj_t* c = dialog("Limit dobowy dolewki", "Zapisz", limitOk);
     lv_obj_set_flex_flow(c, LV_FLEX_FLOW_COLUMN);
@@ -255,6 +259,7 @@ void refreshBar() {
     }
 
     if (!online()) lv_label_set_text(s_barHint, "");
+    else if (!t.controls && !session) lv_label_set_text(s_barHint, "Porcje ręczne na razie w web GUI dolewki");
     else if (t.autoMode) lv_label_set_text(s_barHint, "Porcje ręczne tylko w trybie Serwis");
     else if (!session && (t.alarms & TOPOFF_AL_LOW_RESERVOIR))
         lv_label_set_text(s_barHint, "Zbiornik RO pusty — porcje zablokowane");
@@ -272,7 +277,7 @@ void refreshBar() {
     }
     bool pendingOn = t.pending == TopoffPending::Portions || t.pending == TopoffPending::Stop;
     setSent(s_btnOn, pendingOn);
-    setEnabled(s_btnOn, online() && (session || enabled) && !(busy() && !pendingOn));
+    setEnabled(s_btnOn, ctl() && (session || enabled) && !(busy() && !pendingOn));
 }
 
 void refreshReservoir() {
@@ -397,13 +402,14 @@ void refreshControls() {
     bool on = online();
     setChecked(s_btnAuto, on && t.autoMode);
     setChecked(s_btnService, on && !t.autoMode);
+    on = ctl();
     bool pendingMode = t.pending == TopoffPending::Mode;
     setSent(s_btnAuto, pendingMode && t.pendingAuto);
     setSent(s_btnService, pendingMode && !t.pendingAuto);
     setEnabled(s_btnAuto, on && (!busy() || pendingMode));
     setEnabled(s_btnService, on && (!busy() || pendingMode));
 
-    if (on) lv_label_set_text_fmt(s_btnLimitLabel, "Limit %u ml…", t.dailyLimit);
+    if (online()) lv_label_set_text_fmt(s_btnLimitLabel, "Limit %u ml…", t.dailyLimit);
     else lv_label_set_text(s_btnLimitLabel, "Limit…");
     bool pendingLimit = t.pending == TopoffPending::Limit;
     setSent(s_btnLimit, pendingLimit);
@@ -411,7 +417,8 @@ void refreshControls() {
 
     bool resettable = on && (t.alarms & TOPOFF_AL_RESETTABLE);
     bool pendingReset = t.pending == TopoffPending::Reset;
-    lv_obj_set_style_bg_color(s_btnReset, color(resettable ? C_P1 : C_SURFACE2), 0);
+    bool latched = online() && (t.alarms & TOPOFF_AL_RESETTABLE);  // red also read only: alarm is there
+    lv_obj_set_style_bg_color(s_btnReset, color(latched ? C_P1 : C_SURFACE2), 0);
     setSent(s_btnReset, pendingReset);
     setEnabled(s_btnReset, resettable && (!busy() || pendingReset));
 }

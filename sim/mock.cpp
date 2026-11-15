@@ -35,23 +35,6 @@ constexpr int T_CAPACITY_PORTIONS = 82;  // alarm level to the marker
 constexpr float T_RATE_ML_H = 92.0f;
 const int T_LEVELS[] = {42, 25, 12};     // key 6: reservoir fill %
 
-struct TopoffAlarmDef {
-    uint16_t bit;
-    Sev prio;
-    const char* text;
-};
-const TopoffAlarmDef T_ALARMS[] = {
-    {TOPOFF_AL_LOW_RESERVOIR, Sev::P1, "zbiornik RO pusty — pompa zatrzymana"},
-    {TOPOFF_AL_DAILY_LIMIT, Sev::P1, "limit dobowy osiągnięty — dolewanie zablokowane"},
-    {TOPOFF_AL_RATE_ANOMALY, Sev::P1, "anomalia tempa dolewania"},
-    {TOPOFF_AL_NO_TOPOFF, Sev::P1, "24 h bez dolewki"},
-    {TOPOFF_AL_HW_FAULT, Sev::P1, "awaria FRAM / RTC"},
-    {TOPOFF_AL_RESERVE_LOW, Sev::P3, "zbiornik RO: rezerwa"},
-    {TOPOFF_AL_LEVEL_NO_READING, Sev::P3, "brak odczytu poziomu zbiornika"},
-    {TOPOFF_AL_LEVEL_SENSOR_FAULT, Sev::P3, "awaria czujnika poziomu"},
-    {TOPOFF_AL_UNCALIBRATED, Sev::P3, "pompa nieskalibrowana"},
-};
-
 void copy(char* dst, size_t n, const char* src) { snprintf(dst, n, "%s", src); }
 }  // namespace
 
@@ -94,7 +77,7 @@ void Mock::init() {
     t[1] = {"Dozownik", Sev::Ok, "4 kanały OK", "następna dawka 18:00", false, Screen::Overview};
     t[2] = {"Termostat", Sev::Ok, "25,4 °C", "grzałka wył.", false, Screen::Overview};
     t[3] = {"Timer", Sev::Ok, "3/4 włączone", "CO₂ do 20:00", false, Screen::Overview};
-    t[4] = {"Panel", Sev::Ok, "Wi-Fi -59 dBm", "FW 0.6.1", false, Screen::Overview};
+    t[4] = {"Panel", Sev::Ok, "Wi-Fi -59 dBm", "FW 0.7.0", false, Screen::Overview};
     topoffInit();
     fillPrograms();
     derive();
@@ -169,9 +152,9 @@ void Mock::derive() {
     // Top-off: offline = P2, otherwise one alarm per bit
     const TopoffView& tv = m.topoff;
     add(tv.present && !tv.online, A_T_OFFLINE, Sev::P2, "Dolewka", "brak łączności", Screen::Topoff);
-    for (int i = 0; i < (int)(sizeof(T_ALARMS) / sizeof(T_ALARMS[0])); i++)
-        add(tv.online && (tv.alarms & T_ALARMS[i].bit), A_T_BIT0 + i, T_ALARMS[i].prio, "Dolewka", T_ALARMS[i].text,
-            Screen::Topoff);
+    for (int i = 0; i < TOPOFF_ALARM_COUNT; i++)
+        add(tv.online && (tv.alarms & TOPOFF_ALARMS[i].bit), A_T_BIT0 + i, TOPOFF_ALARMS[i].prio, "Dolewka",
+            TOPOFF_ALARMS[i].text, Screen::Topoff);
     std::stable_sort(m.alarms, m.alarms + m.alarmCount, [](const Alarm& a, const Alarm& b) {
         if (a.prio != b.prio) return (uint8_t)a.prio > (uint8_t)b.prio;
         return a.since < b.since;
@@ -289,6 +272,7 @@ void Mock::topoffInit() {
     TopoffView& t = model.topoff;
     t.present = true;
     t.online = true;
+    t.controls = true;
     t.lastSeen = time(nullptr);
     copy(t.name, sizeof(t.name), "DOLEWKA");
     t.autoMode = true;

@@ -8,8 +8,9 @@ Central touch panel for the aquarium nodes, on the
 Current state: stage 6 — Wi-Fi STA, NTP, ArduinoOTA, ESP-NOW with the lamps as a controller
 (`FT_CTRL_HB`, lamp FW >= 0.3.0 shows "panel: Panel akwarium") and the panel GUI over live lamp data:
 lamp group, program catalog read from a lamp, alarms, group control (Auto / Noc / Test, program change).
-Top-off node (stage D1, `docs/PLAN_DOLEWKA.md`): status received over ESP-NOW and logged on Serial, no
-screen yet.
+Top-off node (stage D3, `docs/PLAN_DOLEWKA.md`): status received over ESP-NOW, tile "Dolewka" and the
+top-off screen with live data (read only, controls greyed out until stage D5), node alarms on the alarm
+strip, "brak łączności" after 15 s without a status.
 
 ## Build / flash
 

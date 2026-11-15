@@ -63,6 +63,25 @@ constexpr uint16_t TOPOFF_AL_LEVEL_SENSOR_FAULT = 0x0080;  // P3
 constexpr uint16_t TOPOFF_AL_UNCALIBRATED = 0x0100;        // P3
 constexpr uint16_t TOPOFF_AL_RESETTABLE = 0x001F;          // latched P1 alarms — "Kasuj alarm"
 
+// One alarm per bit (panel adapter and simulator)
+struct TopoffAlarmDef {
+    uint16_t bit;
+    Sev prio;
+    const char* text;
+};
+constexpr TopoffAlarmDef TOPOFF_ALARMS[] = {
+    {TOPOFF_AL_LOW_RESERVOIR, Sev::P1, "zbiornik RO pusty — pompa zatrzymana"},
+    {TOPOFF_AL_DAILY_LIMIT, Sev::P1, "limit dobowy osiągnięty — dolewanie zablokowane"},
+    {TOPOFF_AL_RATE_ANOMALY, Sev::P1, "anomalia tempa dolewania"},
+    {TOPOFF_AL_NO_TOPOFF, Sev::P1, "24 h bez dolewki"},
+    {TOPOFF_AL_HW_FAULT, Sev::P1, "awaria FRAM / RTC"},
+    {TOPOFF_AL_RESERVE_LOW, Sev::P3, "zbiornik RO: rezerwa"},
+    {TOPOFF_AL_LEVEL_NO_READING, Sev::P3, "brak odczytu poziomu zbiornika"},
+    {TOPOFF_AL_LEVEL_SENSOR_FAULT, Sev::P3, "awaria czujnika poziomu"},
+    {TOPOFF_AL_UNCALIBRATED, Sev::P3, "pompa nieskalibrowana"},
+};
+constexpr int TOPOFF_ALARM_COUNT = sizeof(TOPOFF_ALARMS) / sizeof(TOPOFF_ALARMS[0]);
+
 // Same values as topoff::NodeStatus
 enum TopoffStatus : uint8_t { TS_OK = 0, TS_WARNING, TS_ALARM, TS_FAULT, TS_SERVICE };
 // Same values as the node's AlgorithmState
@@ -80,6 +99,7 @@ enum class TopoffPending : uint8_t { None, Mode, Portions, Stop, Reset, Limit };
 struct TopoffView {
     bool present;            // a status was ever received
     bool online;             // status within the last 15 s
+    bool controls;           // commands available (panel: from stage D5; until then read only)
     time_t lastSeen;
     char name[32];
     uint8_t status;          // TopoffStatus

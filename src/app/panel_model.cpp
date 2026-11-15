@@ -10,6 +10,7 @@
 #include "lamps/lamp_control.h"
 #include "lamps/lamp_listener.h"
 #include "net/network.h"
+#include "topoff/topoff_listener.h"
 #include "version.h"
 
 using namespace gui;
@@ -22,6 +23,7 @@ constexpr uint32_t REBUILD_MS = 500;
 constexpr uint32_t WIFI_GRACE_MS = 30000;   // first connection after boot is not an alarm
 constexpr uint32_t LAMPS_GRACE_MS = 60000;  // heartbeats every 15 s: no lamp after 60 s = alarm
 constexpr uint32_t TIME_GRACE_MS = 120000;
+constexpr uint32_t TOPOFF_GRACE_MS = 60000;  // status every 5 s: none after 60 s = alarm
 // After the last ACK the GUI stays "pending" until the heartbeats show the new state (no mismatch
 // flash in between), at most this long
 constexpr uint32_t CONFIRM_MS = 4000;
@@ -33,12 +35,24 @@ static_assert((int)gui::MODE_AUTO == (int)lamps::MODE_PROGRAM && (int)gui::MODE_
 static_assert(LAMP_FLAG_ORPHAN == lamps::HB_FLAG_ORPHAN && LAMP_FLAG_FRAM == lamps::HB_FLAG_FRAM_FAIL &&
                   LAMP_FLAG_RTC == lamps::HB_FLAG_RTC_FAIL,
               "GUI lamp flags = heartbeat flags");
+static_assert(TOPOFF_AL_LOW_RESERVOIR == topoff::AL_LOW_RESERVOIR && TOPOFF_AL_DAILY_LIMIT == topoff::AL_DAILY_LIMIT &&
+                  TOPOFF_AL_RATE_ANOMALY == topoff::AL_RATE_ANOMALY && TOPOFF_AL_NO_TOPOFF == topoff::AL_NO_TOPOFF &&
+                  TOPOFF_AL_HW_FAULT == topoff::AL_HW_FAULT && TOPOFF_AL_RESERVE_LOW == topoff::AL_RESERVE_LOW &&
+                  TOPOFF_AL_LEVEL_NO_READING == topoff::AL_LEVEL_NO_READING &&
+                  TOPOFF_AL_LEVEL_SENSOR_FAULT == topoff::AL_LEVEL_SENSOR_FAULT &&
+                  TOPOFF_AL_UNCALIBRATED == topoff::AL_UNCALIBRATED,
+              "GUI top-off alarm bits = protocol bits");
+static_assert((int)TS_OK == (int)topoff::NS_OK && (int)TS_WARNING == (int)topoff::NS_WARNING &&
+                  (int)TS_ALARM == (int)topoff::NS_ALARM && (int)TS_FAULT == (int)topoff::NS_FAULT &&
+                  (int)TS_SERVICE == (int)topoff::NS_SERVICE,
+              "GUI top-off status = protocol status");
 
 // Alarm "since" per condition: per lamp slot, and for the group / panel
 enum LampAlarm { LA_OFFLINE, LA_FRAM, LA_RTC, LA_ORPHAN, LA_COUNT };
-enum PanelAlarm { PA_MISMATCH, PA_NO_LAMPS, PA_WIFI, PA_TIME, PA_COUNT };
+enum PanelAlarm { PA_MISMATCH, PA_NO_LAMPS, PA_WIFI, PA_TIME, PA_TOPOFF_OFFLINE, PA_TOPOFF_NONE, PA_COUNT };
 time_t s_lampSince[lamps::MAX_LAMPS][LA_COUNT];
 time_t s_panelSince[PA_COUNT];
+time_t s_topoffSince[TOPOFF_ALARM_COUNT];
 
 Model s_model = {};
 Model s_next = {};
@@ -87,7 +101,7 @@ public:
         s_lastBuildMs = 0;
     }
     void refreshPrograms() override {}  // catalog follows catalog_hash by itself
-    // Top-off commands: stage D4/D5 (the screen is not reachable on the panel before D3)
+    // Top-off commands: stage D5 (until then TopoffView::controls = false, the screen is read only)
     void topoffSetAuto(bool) override {}
     void topoffPortions(uint8_t) override {}
     void topoffStop() override {}
@@ -165,7 +179,70 @@ void fillPrograms(Model& m) {
     m.programsLoading = m.programCount == 0 && (c.busy || !c.valid);
 }
 
+void fillTopoff(Model& m) {
+    const topoff::Node& n = topoff::node();
+    TopoffView& t = m.topoff;
+    if (!n.have) return;
+    const topoff::StatusBody& s = n.st;
+    t.present = true;
+    t.online = topoff::online();
+    t.controls = false;  // commands: stage D5
+    t.lastSeen = n.lastUtc;
+    copy(t.name, sizeof(t.name), s.name);
+    t.status = s.node_status;
+    t.autoMode = s.auto_mode != 0;
+    t.serviceLeftMin = s.service_left_min;
+    t.state = s.algo_state;
+    t.phaseRemainingS = s.phase_remaining_s;
+    t.pumpOn = s.flags & topoff::SF_PUMP_ON;
+    t.sumpLow = s.flags & topoff::SF_SUMP_LOW;
+    t.manualSession = s.flags & topoff::SF_MANUAL_SESSION;
+    t.manualLeft = s.manual_left;
+    t.manualDone = s.manual_done;
+    t.volume24h = s.volume_24h_ml;
+    t.dailyLimit = s.daily_limit_ml;
+    t.dose = s.dose_ml;
+    t.resZone = s.res_zone <= TZ_UNKNOWN ? s.res_zone : (uint8_t)TZ_UNKNOWN;
+    t.resPct = s.res_pct;
+    t.resReservePct = s.res_reserve_pct;
+    t.resAlarmPct = s.res_alarm_pct;
+    t.resPortions = s.res_portions;
+    t.resHoursX10 = s.res_hours_x10;
+    t.resEstimated = s.flags & topoff::SF_RES_ESTIMATED;
+    t.alarms = s.alarms;
+    t.pending = TopoffPending::None;
+}
+
+// Same texts as the simulator: reservoir on line 1, session / Service / 24 h on line 2
+void fillTopoffTile(Model& m) {
+    const TopoffView& tv = m.topoff;
+    NodeTile& t = m.tiles[m.tileCount++];
+    copy(t.title, sizeof(t.title), "Dolewka");
+    t.hasScreen = true;
+    t.target = Screen::Topoff;
+    if (!tv.present || !tv.online) {
+        t.status = Sev::Offline;
+        copy(t.line1, sizeof(t.line1), tv.present ? "Brak łączności" : "Brak danych");
+        return;
+    }
+    Sev worst = Sev::Ok;
+    for (int i = 0; i < TOPOFF_ALARM_COUNT; i++)
+        if ((tv.alarms & TOPOFF_ALARMS[i].bit) && (uint8_t)TOPOFF_ALARMS[i].prio > (uint8_t)worst)
+            worst = TOPOFF_ALARMS[i].prio;
+    t.status = worst;
+    if (tv.resZone == TZ_UNKNOWN) copy(t.line1, sizeof(t.line1), "RO: poziom nieznany");
+    else if (tv.resHoursX10 >= 0)
+        snprintf(t.line1, sizeof(t.line1), "RO %u %% · ~%d h", tv.resPct, (tv.resHoursX10 + 5) / 10);
+    else snprintf(t.line1, sizeof(t.line1), "RO %u %%", tv.resPct);
+    if (tv.manualSession)
+        snprintf(t.line2, sizeof(t.line2), "Porcje: %u z %u", tv.manualDone + 1, tv.manualDone + tv.manualLeft);
+    else if (!tv.autoMode)
+        snprintf(t.line2, sizeof(t.line2), "Serwis · Auto za %u min", tv.serviceLeftMin);
+    else snprintf(t.line2, sizeof(t.line2), "24 h: %u / %u ml", tv.volume24h, tv.dailyLimit);
+}
+
 void fillTiles(Model& m) {
+    fillTopoffTile(m);
     NodeTile& t = m.tiles[m.tileCount++];
     copy(t.title, sizeof(t.title), "Panel");
     t.status = m.wifi ? Sev::Ok : Sev::P2;
@@ -211,6 +288,15 @@ void fillAlarms(Model& m) {
     add(m.lamps.mismatch && m.lamps.pending == Pending::None, s_panelSince[PA_MISMATCH], Sev::P3, "Lampy", "rozjazd trybu lub programu", Screen::Lamps);
     add(lampsSeen == 0 && up > LAMPS_GRACE_MS && lamps::stats().enabled, s_panelSince[PA_NO_LAMPS], Sev::P2, "Lampy",
         "brak heartbeatów lamp", Screen::Lamps);
+    // Top-off: offline = P2 (TOPOFF_OFFLINE), otherwise one alarm per bit of the last status
+    const TopoffView& tv = m.topoff;
+    add(tv.present && !tv.online, s_panelSince[PA_TOPOFF_OFFLINE], Sev::P2, "Dolewka", "brak łączności",
+        Screen::Topoff);
+    add(!tv.present && up > TOPOFF_GRACE_MS && topoff::stats().enabled, s_panelSince[PA_TOPOFF_NONE], Sev::P2,
+        "Dolewka", "brak statusu dolewki", Screen::Topoff);
+    for (int i = 0; i < TOPOFF_ALARM_COUNT; i++)
+        add(tv.online && (tv.alarms & TOPOFF_ALARMS[i].bit), s_topoffSince[i], TOPOFF_ALARMS[i].prio, "Dolewka",
+            TOPOFF_ALARMS[i].text, Screen::Topoff);
     add(!m.wifi && up > WIFI_GRACE_MS, s_panelSince[PA_WIFI], Sev::P2, "Panel", "brak Wi-Fi", Screen::Overview);
     add(!m.timeValid && up > TIME_GRACE_MS, s_panelSince[PA_TIME], Sev::P3, "Panel", "brak czasu (NTP)",
         Screen::Overview);
@@ -280,6 +366,7 @@ void build(Model& m) {
     m.timeValid = net::timeValid();
     fillLamps(m);
     fillPrograms(m);
+    fillTopoff(m);
     fillTiles(m);
     fillAlarms(m);
 }

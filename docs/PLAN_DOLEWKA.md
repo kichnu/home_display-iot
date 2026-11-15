@@ -130,7 +130,7 @@ Każdy etap kończy się buildem, testem na sprzęcie i commitem.
 | D0 | Plan, odpowiedzi na pytania, aktualizacja `docs/nodes/dolewka.md` | panel | ten plik zaakceptowany — ✅ 2026-11-14 (lista punktów v2) |
 | D1 | `TO_STATUS` w dolewce (tylko nadawanie), `setSleep(false)`, `node_status`, `error_code` | dolewka | OTA, ramki widoczne w logu panelu, `rx_bad = 0`, dolewka działa jak wcześniej — ✅ 2026-11-14 (dolewka FW 1.1.0, panel 0.6.1: status co 5 s, bad HMAC 0, wartości zgodne z web GUI, zmiana Auto/Serwis od razu) |
 | D2 | Ekrany w symulatorze: kafelek L1, ekran L2 (odczyty, sterowanie wyszarzone), alarmy | panel | układ zaakceptowany na PC — ✅ 2026-11-14 (pasek zbiornika w strefach kolorów, bargraf porcji + ON/STOP, okno limitu, kasowanie alarmu) |
-| D3 | Adapter `src/topoff/` + model + UI odczytu na panelu, `TOPOFF_OFFLINE` | panel | stan zgodny z web GUI dolewki, alarm po odłączeniu |
+| D3 | Adapter `src/topoff/` + model + UI odczytu na panelu, `TOPOFF_OFFLINE` | panel | stan zgodny z web GUI dolewki, alarm po odłączeniu — ✅ 2026-11-15 (panel 0.7.0: kafelek i ekran L2 z danymi na żywo, sterowanie wyszarzone do D5; dane zgodne z web GUI, po wyłączeniu dolewki alarm P2 „brak łączności”) |
 | D4 | `TO_CMD` / `TO_ACK` w dolewce, nonce, `manualPortionsAdd(n)`, `SET_DAILY_LIMIT` | dolewka | komendy z narzędzia testowego/panelu, powtórka odrzucona |
 | D5 | Sterowanie na panelu: Auto/Serwis, porcje (bargraf + ON) + STOP, kasowanie alarmu, limit dobowy | panel | macierz testów niżej |
 | D6 | Usunięcie porcji ręcznych z web GUI dolewki | dolewka | GUI bez przycisku, panel jedyną drogą |
@@ -148,7 +148,7 @@ Każdy etap kończy się buildem, testem na sprzęcie i commitem.
 | Alarm limitu dobowego → kasowanie z panelu | alarm na pasku, reset działa, buzzer cichnie | |
 | Kasowanie przy pustym zbiorniku | ACK: alarm zbiornika trwa, panel to pokazuje | |
 | Zmiana limitu dobowego z panelu | nowa wartość w web GUI, wartość poza zakresem odrzucona z komunikatem | |
-| Dolewka offline | `TOPOFF_OFFLINE` po ≤ 15 s, sterowanie zablokowane | |
+| Dolewka offline | `TOPOFF_OFFLINE` po ≤ 15 s, sterowanie zablokowane | ✅ 2026-11-15 (D3: alarm P2; blokada sterowania do sprawdzenia w D5) |
 | Restart dolewki w Serwisie | po starcie stan z FRAM / zasady węzła, panel bez fałszywych komend | |
 
 ## Pytania
