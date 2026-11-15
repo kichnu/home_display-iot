@@ -6,11 +6,15 @@
 // same code as the PC simulator) over the model built in src/app/panel_model.
 //
 // Serial commands: i = memory info, b = toggle backlight, w = network / time info,
-// l = lamp table, f = toggle FPS / CPU overlay, r = restart.
+// l = lamp table, t = top-off status, f = toggle FPS / CPU overlay, r = restart.
+// Top-off command tests (stage D4): A = Auto, S = Service, P = 3 portions, X = stop portions,
+// E = error reset, L = daily limit +50 ml, K = daily limit 50 ml (out of range),
+// D = repeat the last command with the same cmd_id, Y = last command with a new cmd_id and old nonce.
 
 #include <Arduino.h>
 #include <Wire.h>
 #include <esp_heap_caps.h>
+#include <string.h>
 
 #include "app/panel_model.h"
 #include "board_pins.h"
@@ -43,6 +47,23 @@ void printMemory() {
                   heap_caps_get_free_size(MALLOC_CAP_SPIRAM), heap_caps_get_minimum_free_size(MALLOC_CAP_SPIRAM));
 }
 
+void topoffTest(char c) {
+    using namespace topoff;
+    bool ok = false;
+    switch (c) {
+        case 'A': ok = sendCommand(CMD_SET_MODE, 1); break;
+        case 'S': ok = sendCommand(CMD_SET_MODE, 0); break;
+        case 'P': ok = sendCommand(CMD_PORTIONS, 3); break;
+        case 'X': ok = sendCommand(CMD_PUMP_STOP, 0); break;
+        case 'E': ok = sendCommand(CMD_ERROR_RESET, 0); break;
+        case 'L': ok = sendCommand(CMD_SET_DAILY_LIMIT, node().st.daily_limit_ml + 50); break;
+        case 'K': ok = sendCommand(CMD_SET_DAILY_LIMIT, 50); break;
+        case 'D': ok = testRepeatLast(); break;
+        case 'Y': ok = testStaleNonce(); break;
+    }
+    if (!ok) Serial.println("Topoff: command not sent (no key, node offline or a command in flight)");
+}
+
 void handleSerial() {
     while (Serial.available()) {
         char c = Serial.read();
@@ -57,6 +78,8 @@ void handleSerial() {
             lamps::printTable();
         } else if (c == 't') {
             topoff::printStatus();
+        } else if (c && strchr("ASPXELKDY", c)) {
+            topoffTest(c);
         } else if (c == 'f') {
             g_perfShown = !g_perfShown;
             if (g_perfShown) lv_sysmon_show_performance(nullptr);
@@ -74,7 +97,7 @@ void setup() {
     Serial.begin(115200);
     uint32_t t0 = millis();
     while (!Serial && millis() - t0 < 1500) delay(10);
-    Serial.println("\n=== home_display-iot " PANEL_FW_VERSION ": stage 6 + D3 (GUI, lamp control, top-off status read only) ===");
+    Serial.println("\n=== home_display-iot " PANEL_FW_VERSION ": stage 6 + D4 (GUI, lamp control, top-off status + test commands) ===");
     Serial.printf("Chip %s rev %d, PSRAM %u B\n", ESP.getChipModel(), ESP.getChipRevision(), ESP.getPsramSize());
 
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, I2C_FREQ_HZ);
@@ -112,6 +135,7 @@ void setup() {
 void loop() {
     net::update();
     lamps::update();
+    topoff::update();
     app::update();
     ui::update();
     gui::update();

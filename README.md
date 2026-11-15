@@ -113,6 +113,10 @@ model built from the lamp protocol (`src/app/panel_model.cpp`).
 Serial commands: `i` memory info, `b` toggle backlight, `w` network / time info, `l` lamp table with
 all heartbeat fields and counters (a growing "bad HMAC" = different Wi-Fi password than the lamps),
 `t` top-off status and counters, `f` toggle FPS / CPU overlay, `r` restart.
+Top-off command tests (stage D4, answer logged as `Topoff: ACK ...`): `A` Auto, `S` Service, `P` 3 portions,
+`X` stop portions, `E` error reset, `L` daily limit +50 ml, `K` daily limit 50 ml (out of range), `D` repeat
+the last command with the same `cmd_id` (node must not run it again), `Y` last command with a new `cmd_id`
+and the old nonce (`STALE_NONCE`).
 
 The original bring-up test (patterns, touch paint, DI read test) is in git history (`27efbea`) and
 in `~/Dokumenty/My_apps/TOOLS/test_ESP32-S3-Touch-LCD-4.3B/`.

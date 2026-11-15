@@ -77,7 +77,7 @@ void Mock::init() {
     t[1] = {"Dozownik", Sev::Ok, "4 kanały OK", "następna dawka 18:00", false, Screen::Overview};
     t[2] = {"Termostat", Sev::Ok, "25,4 °C", "grzałka wył.", false, Screen::Overview};
     t[3] = {"Timer", Sev::Ok, "3/4 włączone", "CO₂ do 20:00", false, Screen::Overview};
-    t[4] = {"Panel", Sev::Ok, "Wi-Fi -59 dBm", "FW 0.7.0", false, Screen::Overview};
+    t[4] = {"Panel", Sev::Ok, "Wi-Fi -59 dBm", "FW 0.7.1", false, Screen::Overview};
     topoffInit();
     fillPrograms();
     derive();
