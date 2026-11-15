@@ -22,6 +22,7 @@
 #include "gt911.h"
 #include "gui/gui.h"
 #include "lamps/lamp_listener.h"
+#include "thermo/thermo_listener.h"
 #include "topoff/topoff_listener.h"
 #include "lcd.h"
 #include "version.h"
@@ -78,6 +79,8 @@ void handleSerial() {
             lamps::printTable();
         } else if (c == 't') {
             topoff::printStatus();
+        } else if (c == 'h') {
+            thermo::printStatus();
         } else if (c && strchr("ASPXELKDY", c)) {
             topoffTest(c);
         } else if (c == 'f') {
@@ -97,7 +100,7 @@ void setup() {
     Serial.begin(115200);
     uint32_t t0 = millis();
     while (!Serial && millis() - t0 < 1500) delay(10);
-    Serial.println("\n=== home_display-iot " PANEL_FW_VERSION ": stage 6 + D4 (GUI, lamp control, top-off status + test commands) ===");
+    Serial.println("\n=== home_display-iot " PANEL_FW_VERSION ": stage 6 + D5 + T1 (GUI, lamps, top-off, thermostat status listener) ===");
     Serial.printf("Chip %s rev %d, PSRAM %u B\n", ESP.getChipModel(), ESP.getChipRevision(), ESP.getPsramSize());
 
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, I2C_FREQ_HZ);
@@ -129,6 +132,7 @@ void setup() {
     net::begin();
     lamps::begin();
     topoff::begin();
+    thermo::begin();
     printMemory();
 }
 

@@ -13,6 +13,8 @@ top-off screen with live data, node alarms on the alarm strip, "brak łącznośc
 Controls on the top-off screen: Auto / Serwis, manual portions (bargraph 1–10 + ON, STOP during the
 session), "Kasuj alarm" and the daily limit (both with a dialog). A tapped control shows "sent" (outline)
 until the node's ACK and next status; the result (or the node's refusal) comes as a toast.
+Thermostat node (stage T1, `docs/PLAN_TERMOSTAT.md`): status received over ESP-NOW and logged on Serial, no
+screen yet.
 
 ## Build / flash
 
@@ -114,7 +116,7 @@ model built from the lamp protocol (`src/app/panel_model.cpp`).
 
 Serial commands: `i` memory info, `b` toggle backlight, `w` network / time info, `l` lamp table with
 all heartbeat fields and counters (a growing "bad HMAC" = different Wi-Fi password than the lamps),
-`t` top-off status and counters, `f` toggle FPS / CPU overlay, `r` restart.
+`t` top-off status and counters, `h` thermostat status and counters, `f` toggle FPS / CPU overlay, `r` restart.
 Top-off command tests (stage D4, answer logged as `Topoff: ACK ...`): `A` Auto, `S` Service, `P` 3 portions,
 `X` stop portions, `E` error reset, `L` daily limit +50 ml, `K` daily limit 50 ml (out of range), `D` repeat
 the last command with the same `cmd_id` (node must not run it again), `Y` last command with a new `cmd_id`

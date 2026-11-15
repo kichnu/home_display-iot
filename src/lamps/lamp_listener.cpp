@@ -10,6 +10,7 @@
 #include <sys/time.h>
 
 #include "../net/network.h"
+#include "../thermo/thermo_listener.h"
 #include "../topoff/topoff_listener.h"
 #include "lamp_internal.h"
 #include "../version.h"
@@ -156,6 +157,10 @@ void handleFrame(const RxItem& it) {
     memcpy(&h, it.data, sizeof(h));
     if (h.magic == topoff::FRAME_MAGIC) {  // top-off node: same radio, own protocol and key
         topoff::handleFrame(it.mac, it.rssi, it.data, it.len);
+        return;
+    }
+    if (h.magic == thermo::FRAME_MAGIC) {  // thermostat node: same radio, own protocol and key
+        thermo::handleFrame(it.mac, it.rssi, it.data, it.len);
         return;
     }
     if (h.magic != FRAME_MAGIC || h.version != FRAME_VERSION) {

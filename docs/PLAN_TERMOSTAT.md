@@ -68,12 +68,15 @@ do ustalenia w kodzie, co dziś robi web), `STALE_NONCE`, `OUT_OF_RANGE`, `BAD_C
    parametru przełącza jak dziś), wejście w Serwis wycisza buzzer jak dziś.
 3. Bez zmian w web GUI.
 
+Odłożone (jak przy dolewce): lampy liczą ramki termostatu (inny `magic`) jako błędne — `rx_bad` w web GUI lamp
+rośnie o ~1 co 5 s. Poprawka w lampach (obcy `magic` ignorowany) — razem z kolejną zmianą w lampach.
+
 ## Etapy
 
 | # | Etap | Repo | Kryterium |
 |---|---|---|---|
 | T0 | Plan, odpowiedzi na pytania, aktualizacja `docs/nodes/termostat.md` | panel | plan zaakceptowany |
-| T1 | `TH_STATUS` w termostacie (tylko nadawanie) | termostat | ramki w logu panelu, `bad HMAC 0`, wartości = web GUI |
+| T1 | `TH_STATUS` w termostacie (tylko nadawanie) | termostat | ramki w logu panelu, `bad HMAC 0`, wartości = web GUI — ✅ 2026-11-15 (termostat FW 1.0.0 — pierwsza wersja w statusie, panel: listener + Serial `h`) |
 | T2 | Ekrany w symulatorze (kafelek, L2, alarmy) | panel | układ zaakceptowany na PC |
 | T3 | Adapter `src/thermo/` + dane na żywo, `THERMO_OFFLINE` | panel | stan zgodny z web GUI, alarm po odłączeniu |
 | T4 | `TH_CMD` / `TH_ACK` w termostacie + klawisze testowe Serial panelu | termostat + panel | komendy, powtórka bez ponownego wykonania, `STALE_NONCE` |
