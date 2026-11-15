@@ -99,7 +99,7 @@ enum class TopoffPending : uint8_t { None, Mode, Portions, Stop, Reset, Limit };
 struct TopoffView {
     bool present;            // a status was ever received
     bool online;             // status within the last 15 s
-    bool controls;           // commands available (panel: from stage D5; until then read only)
+    bool controls;           // commands available (panel: top-off key derived)
     time_t lastSeen;
     char name[32];
     uint8_t status;          // TopoffStatus

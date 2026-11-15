@@ -88,6 +88,100 @@ const char* programName(uint64_t id) {
 
 const char* modeLabel(uint8_t mode) { return lamps::modeName(mode); }
 
+// Top-off command from the GUI (stage D5): "pending" until the ACK and the next status of the node
+// (sent right after a command), at most CONFIRM_MS after the ACK, then one toast with the result.
+// Commands sent from the Serial test keys are not tracked here.
+struct TopoffTracker {
+    bool on;
+    TopoffPending kind;
+    uint8_t arg8;        // portions
+    uint16_t arg16;      // daily limit
+    bool autoMode;       // SET_MODE target
+    uint32_t seenFinished;
+    uint32_t ackedMs;    // command finished (ACK or none); 0 = still waiting
+    uint32_t statusCount;  // node().count at ackedMs
+} s_topoff = {};
+
+void topoffSend(TopoffPending kind, uint8_t cmd, uint16_t arg) {
+    if (!topoff::sendCommand(cmd, arg)) {
+        toast(topoff::online() ? "Nie wysłano: poprzednie polecenie dolewki w toku" : "Nie wysłano: dolewka offline",
+              Sev::P2);
+        return;
+    }
+    s_topoff.on = true;
+    s_topoff.kind = kind;
+    s_topoff.seenFinished = topoff::command().finished;
+    s_topoff.ackedMs = 0;
+    s_lastBuildMs = 0;  // show "pending" at once
+}
+
+// Latched alarms still active after a reset, as text for the toast
+void topoffResetToast(uint16_t alarms) {
+    uint16_t left = alarms & TOPOFF_AL_RESETTABLE;
+    if (!left) return toast("Dolewka: alarmy skasowane");
+    if (left == TOPOFF_AL_LOW_RESERVOIR) return toast("Skasowano — alarm zbiornika trwa do uzupełnienia", Sev::P3);
+    char msg[160] = "Alarm trwa: ";
+    for (int i = 0; i < TOPOFF_ALARM_COUNT; i++) {
+        if (!(left & TOPOFF_ALARMS[i].bit)) continue;
+        size_t n = strlen(msg);
+        snprintf(msg + n, sizeof(msg) - n, "%s%s", n > 12 ? "; " : "", TOPOFF_ALARMS[i].text);
+    }
+    toast(msg, Sev::P3);
+}
+
+void topoffResultToast(const topoff::Command& c) {
+    if (c.state != topoff::CmdState::Acked) return toast("Dolewka: brak potwierdzenia — sprawdź stan", Sev::P2);
+    const topoff::AckBody& a = c.ack;
+    char msg[96];
+    switch (a.result) {
+        case topoff::ACK_OK: break;
+        case topoff::ACK_NOT_SERVICE: return toast("Dolewka odrzuciła: porcje tylko w trybie Serwis", Sev::P2);
+        case topoff::ACK_CALIBRATION: return toast("Dolewka odrzuciła: trwa kalibracja pompy", Sev::P2);
+        case topoff::ACK_PUMP_BUSY: return toast("Dolewka odrzuciła: trwa automatyczna dolewka", Sev::P2);
+        case topoff::ACK_QUEUE_FULL:
+            snprintf(msg, sizeof(msg), "Dolewka: kolejka pełna — przyjęto %u porcji", a.value);
+            return toast(msg, Sev::P2);
+        case topoff::ACK_RESET_BLOCKED: return toast("Dolewka: zapis cyklu — skasuj za chwilę", Sev::P2);
+        case topoff::ACK_RESERVOIR_EMPTY: return toast("Dolewka odrzuciła: zbiornik RO pusty", Sev::P2);
+        case topoff::ACK_STALE_NONCE: return toast("Dolewka odrzuciła: nieaktualne polecenie — spróbuj ponownie", Sev::P2);
+        case topoff::ACK_OUT_OF_RANGE:
+            snprintf(msg, sizeof(msg), "Dolewka odrzuciła: limit poza zakresem (dopuszczalny %u ml)", a.value);
+            return toast(msg, Sev::P2);
+        default:
+            snprintf(msg, sizeof(msg), "Dolewka odrzuciła polecenie (%s)", topoff::ackName(a.result));
+            return toast(msg, Sev::P2);
+    }
+    switch (c.body.cmd) {
+        case topoff::CMD_SET_MODE:
+            if (a.value) return toast("Dolewka: tryb Auto");
+            snprintf(msg, sizeof(msg), "Dolewka: tryb Serwis (powrót do Auto po %u min)",
+                     topoff::node().st.service_left_min);
+            return toast(msg);
+        case topoff::CMD_PORTIONS: return;  // progress is on the bargraph
+        case topoff::CMD_PUMP_STOP: return toast("Dolewka: STOP — bieżąca porcja zostanie dokończona");
+        case topoff::CMD_ERROR_RESET: return topoffResetToast(a.alarms);
+        case topoff::CMD_SET_DAILY_LIMIT:
+            snprintf(msg, sizeof(msg), "Dolewka: limit dobowy %u ml", a.value);
+            return toast(msg);
+    }
+}
+
+void trackTopoff() {
+    if (!s_topoff.on) return;
+    const topoff::Command& c = topoff::command();
+    if (c.state == topoff::CmdState::Waiting || c.finished == s_topoff.seenFinished) return;
+    if (!s_topoff.ackedMs) {
+        s_topoff.ackedMs = millis() | 1;
+        s_topoff.statusCount = topoff::node().count;
+    }
+    // Keep "pending" until the node's status shows the result (no flash of the old state)
+    bool statusAfter = topoff::node().count != s_topoff.statusCount;
+    if (c.state == topoff::CmdState::Acked && !statusAfter && millis() - s_topoff.ackedMs < CONFIRM_MS) return;
+    s_topoff.on = false;
+    s_lastBuildMs = 0;
+    topoffResultToast(c);
+}
+
 class PanelCommands : public Commands {
 public:
     void setMode(uint8_t mode) override {
@@ -101,12 +195,21 @@ public:
         s_lastBuildMs = 0;
     }
     void refreshPrograms() override {}  // catalog follows catalog_hash by itself
-    // Top-off commands: stage D5 (until then TopoffView::controls = false, the screen is read only)
-    void topoffSetAuto(bool) override {}
-    void topoffPortions(uint8_t) override {}
-    void topoffStop() override {}
-    void topoffReset() override {}
-    void topoffSetLimit(uint16_t) override {}
+    // Top-off commands (stage D5): the node validates them, the result comes in the ACK and the status
+    void topoffSetAuto(bool on) override {
+        s_topoff.autoMode = on;
+        topoffSend(TopoffPending::Mode, topoff::CMD_SET_MODE, on ? 1 : 0);
+    }
+    void topoffPortions(uint8_t n) override {
+        s_topoff.arg8 = n;
+        topoffSend(TopoffPending::Portions, topoff::CMD_PORTIONS, n);
+    }
+    void topoffStop() override { topoffSend(TopoffPending::Stop, topoff::CMD_PUMP_STOP, 0); }
+    void topoffReset() override { topoffSend(TopoffPending::Reset, topoff::CMD_ERROR_RESET, 0); }
+    void topoffSetLimit(uint16_t ml) override {
+        s_topoff.arg16 = ml;
+        topoffSend(TopoffPending::Limit, topoff::CMD_SET_DAILY_LIMIT, ml);
+    }
 
 private:
     static void refused() {
@@ -186,7 +289,7 @@ void fillTopoff(Model& m) {
     const topoff::StatusBody& s = n.st;
     t.present = true;
     t.online = topoff::online();
-    t.controls = false;  // commands: stage D5
+    t.controls = topoff::stats().enabled;  // key derived (stage D5)
     t.lastSeen = n.lastUtc;
     copy(t.name, sizeof(t.name), s.name);
     t.status = s.node_status;
@@ -210,7 +313,10 @@ void fillTopoff(Model& m) {
     t.resHoursX10 = s.res_hours_x10;
     t.resEstimated = s.flags & topoff::SF_RES_ESTIMATED;
     t.alarms = s.alarms;
-    t.pending = TopoffPending::None;
+    t.pending = s_topoff.on ? s_topoff.kind : TopoffPending::None;
+    t.pendingAuto = s_topoff.autoMode;
+    t.pendingPortions = s_topoff.arg8;
+    t.pendingLimit = s_topoff.arg16;
 }
 
 // Same texts as the simulator: reservoir on line 1, session / Service / 24 h on line 2
@@ -375,6 +481,7 @@ void build(Model& m) {
 
 void update() {
     trackCommand();
+    trackTopoff();
     if (s_lastBuildMs && millis() - s_lastBuildMs < REBUILD_MS) return;
     s_lastBuildMs = millis();
     build(s_next);

@@ -3,8 +3,8 @@
 // confirmation), daily limit (dialog), "Kasuj alarm" (dialog), manual portions: bargraph 1–10 moved
 // with the finger + ON (no confirmation), STOP during the session.
 // Every control shows "sent" right after the tap (accent outline) and takes its new state only from
-// the node's status / ACK (TopoffView::pending). Without TopoffView::controls (panel before stage D5)
-// the screen is read only: controls greyed out.
+// the node's status / ACK (TopoffView::pending). Without TopoffView::controls (no top-off key on the
+// panel) the screen is read only: controls greyed out.
 
 #include <stdio.h>
 #include <string.h>
@@ -151,6 +151,7 @@ void onOn(lv_event_t*) {
     if (!ctl() || busy()) return;
     if (tv().manualSession) {
         g.cmd->topoffStop();  // STOP: safety 0
+        s_sel = 1;            // after an interrupted session the bargraph starts again from one portion
         return;
     }
     if (tv().autoMode) return;
@@ -259,7 +260,7 @@ void refreshBar() {
     }
 
     if (!online()) lv_label_set_text(s_barHint, "");
-    else if (!t.controls && !session) lv_label_set_text(s_barHint, "Porcje ręczne na razie w web GUI dolewki");
+    else if (!t.controls && !session) lv_label_set_text(s_barHint, "Sterowanie niedostępne — brak klucza dolewki");
     else if (t.autoMode) lv_label_set_text(s_barHint, "Porcje ręczne tylko w trybie Serwis");
     else if (!session && (t.alarms & TOPOFF_AL_LOW_RESERVOIR))
         lv_label_set_text(s_barHint, "Zbiornik RO pusty — porcje zablokowane");

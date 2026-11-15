@@ -132,23 +132,23 @@ Każdy etap kończy się buildem, testem na sprzęcie i commitem.
 | D2 | Ekrany w symulatorze: kafelek L1, ekran L2 (odczyty, sterowanie wyszarzone), alarmy | panel | układ zaakceptowany na PC — ✅ 2026-11-14 (pasek zbiornika w strefach kolorów, bargraf porcji + ON/STOP, okno limitu, kasowanie alarmu) |
 | D3 | Adapter `src/topoff/` + model + UI odczytu na panelu, `TOPOFF_OFFLINE` | panel | stan zgodny z web GUI dolewki, alarm po odłączeniu — ✅ 2026-11-15 (panel 0.7.0: kafelek i ekran L2 z danymi na żywo, sterowanie wyszarzone do D5; dane zgodne z web GUI, po wyłączeniu dolewki alarm P2 „brak łączności”) |
 | D4 | `TO_CMD` / `TO_ACK` w dolewce, nonce, `manualPortionsAdd(n)`, `SET_DAILY_LIMIT` | dolewka | komendy z narzędzia testowego/panelu, powtórka odrzucona — ✅ 2026-11-15 (dolewka FW 1.2.0, panel 0.7.1, testy klawiszami Serial panelu: porcje, STOP, `NOT_SERVICE`, ten sam cmd_id bez ponownego wykonania, `STALE_NONCE`, limit + `OUT_OF_RANGE`, `ERROR_RESET`; test OTA dolewki po późnym Wi-Fi do zrobienia) |
-| D5 | Sterowanie na panelu: Auto/Serwis, porcje (bargraf + ON) + STOP, kasowanie alarmu, limit dobowy | panel | macierz testów niżej |
+| D5 | Sterowanie na panelu: Auto/Serwis, porcje (bargraf + ON) + STOP, kasowanie alarmu, limit dobowy | panel | macierz testów niżej — ✅ 2026-11-15 (panel 0.8.0: sterowanie z ekranu, pending do ACK i statusu, toast z wynikiem/odmową) |
 | D6 | Usunięcie porcji ręcznych z web GUI dolewki | dolewka | GUI bez przycisku, panel jedyną drogą |
 
 ## Testy
 
 | Scenariusz | Oczekiwane | Wynik |
 |---|---|---|
-| Auto → Serwis → Auto z panelu | tryb zmieniony w < 1 s, web GUI dolewki zgodne, odliczanie Serwisu widoczne | |
-| Porcje: 3 z panelu w Serwisie | 3 dawki z pauzą 5 s, postęp na panelu, 24 h bez zmian, zapas maleje | ◐ 2026-11-15 (D4, Serial: 3 dawki, 24 h bez zmian, zapas maleje; postęp na ekranie w D5) |
-| STOP w trakcie sesji | bieżąca porcja kończy się, kolejka pusta | ◐ 2026-11-15 (D4, Serial: porcja dokończona, kolejka pusta; z ekranu w D5) |
-| Porcje w Auto | odmowa `NOT_SERVICE`, komunikat na panelu | ◐ 2026-11-15 (D4: `NOT_SERVICE`; komunikat na ekranie w D5) |
+| Auto → Serwis → Auto z panelu | tryb zmieniony w < 1 s, web GUI dolewki zgodne, odliczanie Serwisu widoczne | ✅ 2026-11-15 (D5, ekran dotykowy) |
+| Porcje: 3 z panelu w Serwisie | 3 dawki z pauzą 5 s, postęp na panelu, 24 h bez zmian, zapas maleje | ✅ 2026-11-15 (D5, ekran dotykowy) |
+| STOP w trakcie sesji | bieżąca porcja kończy się, kolejka pusta | ✅ 2026-11-15 (D5, ekran dotykowy); po STOP bargraf wraca do 1 |
+| Porcje w Auto | odmowa `NOT_SERVICE`, komunikat na panelu | ✅ 2026-11-15 (D5, ekran dotykowy): bargraf i ON wyszarzone z podpowiedzią |
 | Utracony ACK (ponowienie) | porcje dodane raz | ✅ 2026-11-15 (D4: ten sam cmd_id → ACK OK, kolejka 3, nie 6) |
 | Powtórka nagranej komendy | `STALE_NONCE`, brak działania | ✅ 2026-11-15 (D4) |
-| Alarm limitu dobowego → kasowanie z panelu | alarm na pasku, reset działa, buzzer cichnie | |
+| Alarm limitu dobowego → kasowanie z panelu | alarm na pasku, reset działa, buzzer cichnie | ✅ 2026-11-15 (D5, ekran dotykowy) |
 | Kasowanie przy pustym zbiorniku | ACK: alarm zbiornika trwa, panel to pokazuje | |
-| Zmiana limitu dobowego z panelu | nowa wartość w web GUI, wartość poza zakresem odrzucona z komunikatem | ◐ 2026-11-15 (D4: 4050 przyjęte, 50 → `OUT_OF_RANGE` z min. 500; okno na ekranie w D5) |
-| Dolewka offline | `TOPOFF_OFFLINE` po ≤ 15 s, sterowanie zablokowane | ✅ 2026-11-15 (D3: alarm P2; blokada sterowania do sprawdzenia w D5) |
+| Zmiana limitu dobowego z panelu | nowa wartość w web GUI, wartość poza zakresem odrzucona z komunikatem | ✅ 2026-11-15 (D5, ekran dotykowy) |
+| Dolewka offline | `TOPOFF_OFFLINE` po ≤ 15 s, sterowanie zablokowane | ✅ 2026-11-15 (D3: alarm P2; D5: sterowanie zablokowane) |
 | Restart dolewki w Serwisie | po starcie stan z FRAM / zasady węzła, panel bez fałszywych komend | |
 
 ## Pytania

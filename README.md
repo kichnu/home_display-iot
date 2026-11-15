@@ -8,9 +8,11 @@ Central touch panel for the aquarium nodes, on the
 Current state: stage 6 — Wi-Fi STA, NTP, ArduinoOTA, ESP-NOW with the lamps as a controller
 (`FT_CTRL_HB`, lamp FW >= 0.3.0 shows "panel: Panel akwarium") and the panel GUI over live lamp data:
 lamp group, program catalog read from a lamp, alarms, group control (Auto / Noc / Test, program change).
-Top-off node (stage D3, `docs/PLAN_DOLEWKA.md`): status received over ESP-NOW, tile "Dolewka" and the
-top-off screen with live data (read only, controls greyed out until stage D5), node alarms on the alarm
-strip, "brak łączności" after 15 s without a status.
+Top-off node (stages D3–D5, `docs/PLAN_DOLEWKA.md`): status received over ESP-NOW, tile "Dolewka" and the
+top-off screen with live data, node alarms on the alarm strip, "brak łączności" after 15 s without a status.
+Controls on the top-off screen: Auto / Serwis, manual portions (bargraph 1–10 + ON, STOP during the
+session), "Kasuj alarm" and the daily limit (both with a dialog). A tapped control shows "sent" (outline)
+until the node's ACK and next status; the result (or the node's refusal) comes as a toast.
 
 ## Build / flash
 
