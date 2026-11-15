@@ -60,15 +60,18 @@ Tylko web GUI: testy grzałki i wentylatora (`/api/test/*`), historia godzinowa 
 
 | Kod | Warunek | Prio | Skutek / węzeł | Reakcja | Kasowanie | Źródło |
 |---|---|---|---|---|---|---|
-| `SENSOR_FAULT` | 3 kolejne nieudane cykle odczytu STS35 | P1 | grzałka i wentylator stop (latch), buzzer ALARM | sprawdzić czujnik / kabel, skasować | latch + `sensor_fault_reset` | `ALARM_FLAG_SENSOR` |
-| `TEMP_LOW` | temp < target − `alarm_delta_low` | P2 | buzzer ALARM | sprawdzić grzałkę | auto (histereza) | `ALARM_FLAG_TEMP_LOW` |
-| `TEMP_HIGH` | temp > `fan_on_point` + `alarm_delta_high` | P2 | buzzer ALARM | sprawdzić wentylator / otoczenie | auto | `ALARM_FLAG_TEMP_HIGH` |
-| `HEATER_INEFFECTIVE` | grzanie ≥ `trend_window`, wzrost < `trend_delta` | P2 | buzzer WARNING | sprawdzić grzałkę, zasilanie SSR | auto | `ALARM_FLAG_TREND` |
+| `SENSOR_FAULT` | 3 kolejne nieudane cykle odczytu STS35 | P1 | grzałka i wentylator stop (latch), buzzer ALARM bez wyciszania (też w Serwisie) | sprawdzić czujnik / kabel, skasować | latch + `sensor_fault_reset` | `ALARM_FLAG_SENSOR` |
+| `HW_FAULT` | FRAM / DS3231 / dane Wi-Fi z fallbacku (`hw_health`, 2026-11-15) | P1 | buzzer ALARM bez wyciszania, regulacja działa dalej | naprawić blok, potwierdzić | latch + Acknowledge (web GUI) | `hw_alarm` |
+| `TEMP_LOW` | temp < target − `alarm_delta_low` | P2 | buzzer ALARM, wyciszalny (epizod) | sprawdzić grzałkę | auto (histereza) | `ALARM_FLAG_TEMP_LOW` |
+| `TEMP_HIGH` | temp > `fan_on_point` + `alarm_delta_high` | P2 | buzzer ALARM, wyciszalny (epizod) | sprawdzić wentylator / otoczenie | auto | `ALARM_FLAG_TEMP_HIGH` |
+| `HEATER_INEFFECTIVE` | grzanie ≥ `trend_window`, wzrost < `trend_delta` | P3 | ostrzeżenie bez buzzera (2026-11-15), trwa, dopóki grzałka grzeje bez wzrostu | sprawdzić grzałkę / konfigurację | auto | `ALARM_FLAG_TREND` |
 | `SERVICE_MODE` | `system_enabled = 0` | P3 | sterowanie wyłączone, auto-powrót 15 min | — (informacja) | auto | `isSystemDisabled()` |
 | `RTC_BATTERY` | wspólny | P3 | | wymienić baterię | auto | |
 
-`in_buffer_zone` to status, nie alarm. Wyciszenie (`alarm_mute`) dotyczy tylko aktywnych alarmów;
-ponowne wystąpienie znów dzwoni.
+`in_buffer_zone` to status, nie alarm. Zasada (2026-11-15): alarm wymagający interwencji jest zatrzaśnięty i bez
+wyciszania — buzzer milknie dopiero po usunięciu przyczyny i skasowaniu. Wyciszenie (`alarm_mute`) tylko dla
+samoczynnie mijających `TEMP_LOW` / `TEMP_HIGH` (przyczyna bywa poza zasięgiem, np. upał; bez Mute jedyną ciszą byłby
+Serwis, który wyłącza regulację), tylko bieżący epizod — ponowne wystąpienie znów dzwoni.
 
 ## Do ustalenia
 
