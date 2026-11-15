@@ -11,7 +11,7 @@ namespace gui {
 // Severity: status colour of tiles / rows and alarm priority (ISA-18.2 style, P1 highest)
 enum class Sev : uint8_t { Ok, P3, P2, P1, Offline };
 
-enum class Screen : uint8_t { Overview, Lamps, Programs, Alarms, Topoff };
+enum class Screen : uint8_t { Overview, Lamps, Programs, Alarms, Topoff, Thermo };
 
 // Same values as the lamp protocol (LampMode)
 enum LampMode : uint8_t { MODE_AUTO = 0, MODE_TEST = 1, MODE_NIGHT = 2 };
@@ -129,6 +129,62 @@ struct TopoffView {
     uint16_t pendingLimit;
 };
 
+// ---- Thermostat node (docs/PLAN_TERMOSTAT.md) ----
+
+// Alarm bits, same values as the thermostat protocol (thermo::AL_*). Rule: latched alarms need
+// intervention and cannot be muted; TEMP_LOW / TEMP_HIGH clear by themselves and can be muted.
+constexpr uint16_t THERMO_AL_TEMP_LOW = 0x0001;      // P2, buzzer, mutable
+constexpr uint16_t THERMO_AL_TEMP_HIGH = 0x0002;     // P2, buzzer, mutable
+constexpr uint16_t THERMO_AL_TREND = 0x0004;         // P3 warning, no buzzer
+constexpr uint16_t THERMO_AL_SENSOR_FAULT = 0x0008;  // P1 latched — "Kasuj awarię czujnika"
+constexpr uint16_t THERMO_AL_HW_FAULT = 0x0010;      // P1 latched — acknowledge in the node's web GUI
+constexpr uint16_t THERMO_AL_MUTABLE = THERMO_AL_TEMP_LOW | THERMO_AL_TEMP_HIGH;
+
+struct ThermoAlarmDef {
+    uint16_t bit;
+    Sev prio;
+    const char* text;
+};
+constexpr ThermoAlarmDef THERMO_ALARMS[] = {
+    {THERMO_AL_SENSOR_FAULT, Sev::P1, "awaria czujnika — grzałka i wentylator wyłączone"},
+    {THERMO_AL_HW_FAULT, Sev::P1, "awaria FRAM / RTC — potwierdź w web GUI termostatu"},
+    {THERMO_AL_TEMP_LOW, Sev::P2, "za zimno"},
+    {THERMO_AL_TEMP_HIGH, Sev::P2, "za ciepło"},
+    {THERMO_AL_TREND, Sev::P3, "grzałka nieskuteczna (ostrzeżenie)"},
+};
+constexpr int THERMO_ALARM_COUNT = sizeof(THERMO_ALARMS) / sizeof(THERMO_ALARMS[0]);
+
+// Same values as thermo::AlgoState (node's AlgorithmState); status = TopoffStatus values (TS_*)
+enum ThermoState : uint8_t { TH_IDLE = 0, TH_HEATING, TH_COOLING, TH_ALARM_LOW, TH_ALARM_HIGH, TH_SENSOR_FAULT, TH_TREND };
+
+constexpr uint8_t THERMO_FAN_STEP = 5;          // %, ▼ / ▲ (as the node's web GUI)
+constexpr uint8_t THERMO_FAN_MANUAL_PCT = 50;   // "Wentylator ON" (as the node's web GUI)
+
+enum class ThermoPending : uint8_t { None, Mode, Mute, SensorReset, Heater, Fan };
+
+struct ThermoView {
+    bool present;            // a status was ever received
+    bool online;             // status within the last 15 s
+    bool controls;           // commands available (panel: from stage T5; until then read only)
+    time_t lastSeen;
+    char name[32];
+    uint8_t status;          // TopoffStatus values (TS_*)
+    bool autoMode;           // false = Service Mode
+    uint16_t serviceLeftS;   // Service Mode: seconds to the auto return
+    uint8_t state;           // ThermoState
+    bool tempValid;
+    int16_t tempX100;        // °C × 100
+    bool heaterOn;
+    uint8_t fanPct;          // 0–100
+    bool inBuffer;           // temp >= target, fan not yet on (yellow)
+    uint16_t alarms;         // THERMO_AL_*
+    uint16_t muted;          // THERMO_AL_* silenced (TEMP_LOW / TEMP_HIGH only)
+    ThermoPending pending;   // command sent, waiting for the ACK
+    bool pendingAuto;
+    bool pendingHeater;
+    uint8_t pendingFan;
+};
+
 struct Program {
     uint64_t id;
     char name[24];
@@ -159,6 +215,7 @@ struct Model {
     bool timeValid;
     LampGroup lamps;
     TopoffView topoff;
+    ThermoView thermo;
     Program programs[MAX_PROGRAMS];
     int programCount;
     bool programsLoading;
@@ -180,6 +237,12 @@ public:
     virtual void topoffStop() = 0;                     // stop the manual session
     virtual void topoffReset() = 0;                    // clear latched alarms (after confirmation)
     virtual void topoffSetLimit(uint16_t ml) = 0;      // daily limit (after confirmation)
+    // Thermostat node: Service Mode for the manual heater / fan, validated by the node
+    virtual void thermoSetAuto(bool on) = 0;           // Auto / Service Mode, no confirmation
+    virtual void thermoMute() = 0;                     // mute TEMP_LOW / TEMP_HIGH (current episode)
+    virtual void thermoSensorReset() = 0;              // clear the sensor fault latch (after confirmation)
+    virtual void thermoHeater(bool on) = 0;            // manual heater (Service Mode)
+    virtual void thermoFan(uint8_t pct) = 0;           // manual fan 0–100 % (Service Mode)
 };
 
 }  // namespace gui

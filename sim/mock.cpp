@@ -25,6 +25,7 @@ constexpr uint32_t PROGRAMS_SLOW_MS = 2000;
 
 // Alarm slots (since_ index): first time a condition was seen
 enum { A_OFF0, A_OFF1, A_FRAM0, A_RTC1, A_MISMATCH, A_DOSING, A_WIFI, A_T_OFFLINE, A_T_BIT0 };  // + 9 top-off bits
+enum { A_TH_OFFLINE = A_T_BIT0 + 9, A_TH_BIT0 };  // + 5 thermostat bits (since_[24])
 
 // Top-off simulation: shortened times so a session is watchable
 constexpr uint32_t T_PORTION_MS = 4000;  // node: dose from the calibration (~30 s)
@@ -34,6 +35,11 @@ constexpr uint32_t T_CMD_MS = 900;
 constexpr int T_CAPACITY_PORTIONS = 82;  // alarm level to the marker
 constexpr float T_RATE_ML_H = 92.0f;
 const int T_LEVELS[] = {42, 25, 12};     // key 6: reservoir fill %
+// Thermostat (target 25,0 °C, fan from 26,0 °C): key t steps heating / buffer / cooling / too warm / too cold
+const int16_t TH_TEMPS[] = {2440, 2540, 2660, 2780, 2270};
+constexpr int TH_TEMP_STEPS = sizeof(TH_TEMPS) / sizeof(TH_TEMPS[0]);
+constexpr uint32_t TH_SERVICE_S = 15 * 60;
+constexpr uint32_t TH_CMD_MS = 900;
 
 void copy(char* dst, size_t n, const char* src) { snprintf(dst, n, "%s", src); }
 }  // namespace
@@ -48,6 +54,9 @@ void Mock::help() {
         "  9  czas nieważny / ważny               0  wolne pobieranie listy programów\n"
         "  d  Dolewka: limit dobowy (alarm P1)    e  Dolewka: brak odczytu ToF (szacunek)\n"
         "  o  Dolewka offline / online            p  Dolewka: cykl dolewki auto\n"
+        "  t  Termostat: temperatura (grzeje / bufor / chłodzi / za ciepło / za zimno)\n"
+        "  f  Termostat: czujnik uszkodzony / OK  g  Termostat: awaria FRAM/RTC\n"
+        "  r  Termostat: grzałka nieskuteczna     n  Termostat offline / online\n"
         "  s  wygaszacz teraz                     h  ta pomoc\n"
         "Screensaver also after 60 s without mouse input.\n\n");
 }
@@ -75,10 +84,11 @@ void Mock::init() {
     NodeTile* t = m.tiles;
     t[0] = {"Dolewka", Sev::Ok, "", "", true, Screen::Topoff};
     t[1] = {"Dozownik", Sev::Ok, "4 kanały OK", "następna dawka 18:00", false, Screen::Overview};
-    t[2] = {"Termostat", Sev::Ok, "25,4 °C", "grzałka wył.", false, Screen::Overview};
+    t[2] = {"Termostat", Sev::Ok, "", "", true, Screen::Thermo};
     t[3] = {"Timer", Sev::Ok, "3/4 włączone", "CO₂ do 20:00", false, Screen::Overview};
     t[4] = {"Panel", Sev::Ok, "Wi-Fi -59 dBm", "FW 0.8.0", false, Screen::Overview};
     topoffInit();
+    thermoInit();
     fillPrograms();
     derive();
 }
@@ -107,6 +117,7 @@ void Mock::derive() {
     time_t now = time(nullptr);
     for (int i = 0; i < 2; i++) lg.lamps[i].online = !offline_[i];
     topoffDerive();
+    thermoDerive();
 
     // Group mode / program: first online lamp (majority with two lamps is the same thing)
     int ref = -1;
@@ -155,6 +166,16 @@ void Mock::derive() {
     for (int i = 0; i < TOPOFF_ALARM_COUNT; i++)
         add(tv.online && (tv.alarms & TOPOFF_ALARMS[i].bit), A_T_BIT0 + i, TOPOFF_ALARMS[i].prio, "Dolewka",
             TOPOFF_ALARMS[i].text, Screen::Topoff);
+    // Thermostat: offline = P2, otherwise one alarm per bit (muted ones say so)
+    const ThermoView& th = m.thermo;
+    add(th.present && !th.online, A_TH_OFFLINE, Sev::P2, "Termostat", "brak łączności", Screen::Thermo);
+    for (int i = 0; i < THERMO_ALARM_COUNT; i++) {
+        char text[64];
+        snprintf(text, sizeof(text), "%s%s", THERMO_ALARMS[i].text,
+                 (th.muted & THERMO_ALARMS[i].bit) ? " (wyciszony)" : "");
+        add(th.online && (th.alarms & THERMO_ALARMS[i].bit), A_TH_BIT0 + i, THERMO_ALARMS[i].prio, "Termostat",
+            text, Screen::Thermo);
+    }
     std::stable_sort(m.alarms, m.alarms + m.alarmCount, [](const Alarm& a, const Alarm& b) {
         if (a.prio != b.prio) return (uint8_t)a.prio > (uint8_t)b.prio;
         return a.since < b.since;
@@ -183,6 +204,27 @@ void Mock::derive() {
                 snprintf(t.line2, sizeof(t.line2), "24 h: %u / %u ml", tv.volume24h, tv.dailyLimit);
         }
     }
+    // Thermostat tile: temperature, state / Service countdown
+    {
+        NodeTile& t = m.tiles[2];
+        Sev worst = Sev::Ok;
+        for (int i = 0; i < m.alarmCount; i++)
+            if (m.alarms[i].target == Screen::Thermo && (uint8_t)m.alarms[i].prio > (uint8_t)worst)
+                worst = m.alarms[i].prio;
+        t.status = th.online ? worst : Sev::Offline;
+        if (!th.online) {
+            copy(t.line1, sizeof(t.line1), "Brak łączności");
+            copy(t.line2, sizeof(t.line2), "");
+        } else {
+            int v = (th.tempX100 + 5) / 10;
+            if (th.tempValid) snprintf(t.line1, sizeof(t.line1), "%d,%d °C", v / 10, v % 10);
+            else copy(t.line1, sizeof(t.line1), "brak odczytu");
+            const char* st[] = {"Czuwa", "Grzeje", "Chłodzi", "Za zimno", "Za ciepło", "Awaria czujnika", "Grzałka nieskuteczna"};
+            if (!th.autoMode) snprintf(t.line2, sizeof(t.line2), "Serwis · Auto za %u min", (th.serviceLeftS + 59) / 60);
+            else if (th.fanPct) snprintf(t.line2, sizeof(t.line2), "%s · wentylator %u %%", st[th.state], th.fanPct);
+            else copy(t.line2, sizeof(t.line2), st[th.state < 7 ? th.state : 0]);
+        }
+    }
     m.tiles[4].status = m.wifi ? Sev::Ok : Sev::P2;
     copy(m.tiles[4].line1, sizeof(m.tiles[4].line1), m.wifi ? "Wi-Fi -59 dBm" : "brak Wi-Fi");
     m.version++;
@@ -191,6 +233,7 @@ void Mock::derive() {
 void Mock::tick(uint32_t nowMs) {
     nowMs_ = nowMs;
     topoffTick(nowMs);
+    thermoTick(nowMs);
     LampGroup& lg = model.lamps;
     if (nowMs - lastHbMs_ >= 15000) {  // heartbeats: lastSeen of online lamps
         lastHbMs_ = nowMs;
@@ -454,6 +497,142 @@ void Mock::topoffSetLimit(uint16_t ml) {
     topoffSend(TopoffPending::Limit);
 }
 
+// ---- thermostat ----
+
+void Mock::thermoInit() {
+    ThermoView& t = model.thermo;
+    t.present = true;
+    t.online = true;
+    t.controls = true;
+    t.lastSeen = time(nullptr);
+    copy(t.name, sizeof(t.name), "TERMOSTAT");
+    t.autoMode = true;
+    t.tempValid = true;
+    t.tempX100 = TH_TEMPS[thermoTempStep_];
+    thermoDerive();
+}
+
+void Mock::thermoDerive() {
+    ThermoView& t = model.thermo;
+    t.online = !thermoOffline_;
+    if (t.online) t.lastSeen = time(nullptr);
+    if (thermoSensorCause_) thermoSensorLatched_ = true;  // latched until reset with a working sensor
+    t.tempValid = !thermoSensorCause_;
+    t.tempX100 = TH_TEMPS[thermoTempStep_];
+    bool low = t.tempValid && t.tempX100 < 2300, high = t.tempValid && t.tempX100 > 2750;
+
+    if (thermoSensorLatched_) {  // node: heater and fan stopped until the reset
+        t.heaterOn = false;
+        t.fanPct = 0;
+        t.state = TH_SENSOR_FAULT;
+    } else if (t.autoMode) {     // node algorithm (Service Mode: manual heater / fan stay)
+        t.heaterOn = low || t.tempX100 < 2500;
+        t.fanPct = high ? 100 : t.tempX100 >= 2600 ? (uint8_t)(30 + (t.tempX100 - 2600) * 70 / 150) : 0;
+        t.state = low ? TH_ALARM_LOW : high ? TH_ALARM_HIGH : t.heaterOn ? TH_HEATING : t.fanPct ? TH_COOLING : TH_IDLE;
+    }
+    t.inBuffer = t.tempValid && !t.heaterOn && !t.fanPct && t.tempX100 >= 2500 && t.tempX100 < 2600;
+
+    uint16_t a = 0;
+    if (low) a |= THERMO_AL_TEMP_LOW;
+    if (high) a |= THERMO_AL_TEMP_HIGH;
+    if (thermoTrend_) a |= THERMO_AL_TREND;
+    if (thermoSensorLatched_) a |= THERMO_AL_SENSOR_FAULT;
+    if (thermoHw_) a |= THERMO_AL_HW_FAULT;
+    t.alarms = a;
+    t.muted &= a;  // an episode that ended — the next one sounds again
+
+    // Node rule: Fault (latched) > Alarm (temperature) > Service > Warning (trend) > OK
+    if (a & (THERMO_AL_SENSOR_FAULT | THERMO_AL_HW_FAULT)) t.status = TS_FAULT;
+    else if (a & THERMO_AL_MUTABLE) t.status = TS_ALARM;
+    else if (!t.autoMode) t.status = TS_SERVICE;
+    else if (a) t.status = TS_WARNING;
+    else t.status = TS_OK;
+}
+
+void Mock::thermoSend(ThermoPending p) {
+    ThermoView& t = model.thermo;
+    if (t.pending != ThermoPending::None || !t.online) return;
+    t.pending = p;
+    thermoCmdDueMs_ = nowMs_ + TH_CMD_MS;
+    model.version++;
+}
+
+void Mock::thermoTick(uint32_t nowMs) {
+    ThermoView& t = model.thermo;
+    bool changed = false;
+
+    if (thermoCmdDueMs_ && (int32_t)(nowMs - thermoCmdDueMs_) >= 0) {
+        thermoCmdDueMs_ = 0;
+        ThermoPending p = t.pending;
+        t.pending = ThermoPending::None;
+        changed = true;
+        if (rejectNext_ || !t.online) {
+            rejectNext_ = false;
+            gui::toast("Termostat: brak potwierdzenia — sprawdź stan", Sev::P2);
+        } else {
+            switch (p) {
+                case ThermoPending::Mode:
+                    t.autoMode = t.pendingAuto;
+                    thermoServiceMs_ = nowMs;
+                    t.serviceLeftS = t.autoMode ? 0 : TH_SERVICE_S;
+                    gui::toast(t.autoMode ? "Termostat: tryb Auto" : "Termostat: tryb Serwis (powrót do Auto po 15 min)");
+                    break;
+                case ThermoPending::Mute:
+                    t.muted |= t.alarms & THERMO_AL_MUTABLE;
+                    gui::toast("Termostat: alarm wyciszony — wróci przy kolejnym wystąpieniu");
+                    break;
+                case ThermoPending::SensorReset:
+                    thermoSensorLatched_ = false;
+                    if (thermoSensorCause_)
+                        gui::toast("Awaria czujnika trwa — czujnik dalej nie działa", Sev::P2);
+                    else gui::toast("Termostat: awaria czujnika skasowana");
+                    break;
+                case ThermoPending::Heater:
+                    if (t.autoMode) gui::toast("Termostat odrzucił: ręczne sterowanie tylko w trybie Serwis", Sev::P2);
+                    else t.heaterOn = t.pendingHeater;
+                    break;
+                case ThermoPending::Fan:
+                    if (t.autoMode) gui::toast("Termostat odrzucił: ręczne sterowanie tylko w trybie Serwis", Sev::P2);
+                    else t.fanPct = t.pendingFan;
+                    break;
+                default: break;
+            }
+        }
+    }
+
+    // Service Mode countdown (real seconds), then back to Auto
+    if (!t.autoMode) {
+        uint32_t el = (nowMs - thermoServiceMs_) / 1000;
+        uint16_t left = el >= TH_SERVICE_S ? 0 : (uint16_t)(TH_SERVICE_S - el);
+        if (left != t.serviceLeftS) {
+            t.serviceLeftS = left;
+            if (!left) t.autoMode = true;
+            changed = true;
+        }
+    }
+
+    if (changed) derive();
+}
+
+void Mock::thermoSetAuto(bool on) {
+    model.thermo.pendingAuto = on;
+    thermoSend(ThermoPending::Mode);
+}
+
+void Mock::thermoMute() { thermoSend(ThermoPending::Mute); }
+
+void Mock::thermoSensorReset() { thermoSend(ThermoPending::SensorReset); }
+
+void Mock::thermoHeater(bool on) {
+    model.thermo.pendingHeater = on;
+    thermoSend(ThermoPending::Heater);
+}
+
+void Mock::thermoFan(uint8_t pct) {
+    model.thermo.pendingFan = pct;
+    thermoSend(ThermoPending::Fan);
+}
+
 void Mock::key(char k) {
     LampGroup& lg = model.lamps;
     switch (k) {
@@ -495,6 +674,14 @@ void Mock::key(char k) {
             slowPrograms_ = !slowPrograms_;
             printf("program list %s\n", slowPrograms_ ? "loads in 2 s" : "cached");
             return;
+        case 't': thermoTempStep_ = (thermoTempStep_ + 1) % TH_TEMP_STEPS; break;
+        case 'f': thermoSensorCause_ = !thermoSensorCause_; break;
+        case 'g': thermoHw_ = !thermoHw_; break;
+        case 'r': thermoTrend_ = !thermoTrend_; break;
+        case 'n':
+            thermoOffline_ = !thermoOffline_;
+            if (!thermoOffline_) model.thermo.lastSeen = time(nullptr);
+            break;
         case 's': gui::showScreensaver(); return;
         case 'h': help(); return;
         default: return;

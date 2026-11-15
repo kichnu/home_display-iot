@@ -27,6 +27,7 @@ const char* modeName(uint8_t mode);
 void formatAgo(time_t t, char* buf, size_t n);  // "45 s", "3 min", "2 h 5 min"
 Sev lampGroupSev();                              // worst state of the lamp group (for its tile / header)
 Sev topoffSev();                                 // worst alarm of the top-off node, Offline without status
+Sev thermoSev();                                 // worst alarm of the thermostat, Offline without status
 int lampsOnline();
 
 // Panel-style confirmation (safety 1): Cancel / OK, both TOUCH_H high
@@ -44,5 +45,6 @@ namespace lamps { void build(); void refresh(); }
 namespace programs { void build(); void refresh(); }
 namespace alarms { void build(); void refresh(); }
 namespace topoff { void build(); void refresh(); }
+namespace thermo { void build(); void refresh(); }
 
 }  // namespace gui

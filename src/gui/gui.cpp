@@ -41,6 +41,7 @@ const char* screenTitle(Screen s) {
         case Screen::Programs: return "Program lamp";
         case Screen::Alarms: return "Alarmy";
         case Screen::Topoff: return "Dolewka";
+        case Screen::Thermo: return "Termostat";
     }
     return "";
 }
@@ -102,6 +103,7 @@ void refreshScreen() {
         case Screen::Programs: programs::refresh(); break;
         case Screen::Alarms: alarms::refresh(); break;
         case Screen::Topoff: topoff::refresh(); break;
+        case Screen::Thermo: thermo::refresh(); break;
     }
 }
 
@@ -109,6 +111,7 @@ void goBack() {
     switch (g.screen) {
         case Screen::Lamps: navigate(Screen::Overview); break;
         case Screen::Topoff: navigate(Screen::Overview); break;
+        case Screen::Thermo: navigate(Screen::Overview); break;
         case Screen::Programs: navigate(Screen::Lamps); break;
         case Screen::Alarms: navigate(s_prevScreen == Screen::Alarms ? Screen::Overview : s_prevScreen); break;
         default: break;
@@ -286,6 +289,16 @@ Sev topoffSev() {
     return worst;
 }
 
+Sev thermoSev() {
+    if (!g.m->thermo.present || !g.m->thermo.online) return Sev::Offline;
+    Sev worst = Sev::Ok;
+    for (int i = 0; i < g.m->alarmCount; i++) {
+        const Alarm& a = g.m->alarms[i];
+        if (a.target == Screen::Thermo && (uint8_t)a.prio > (uint8_t)worst) worst = a.prio;
+    }
+    return worst;
+}
+
 int lampsOnline() {
     int n = 0;
     for (int i = 0; i < g.m->lamps.count; i++)
@@ -421,6 +434,7 @@ void navigate(Screen s) {
         case Screen::Programs: programs::build(); break;
         case Screen::Alarms: alarms::build(); break;
         case Screen::Topoff: topoff::build(); break;
+        case Screen::Thermo: thermo::build(); break;
     }
     refreshShell();
 }

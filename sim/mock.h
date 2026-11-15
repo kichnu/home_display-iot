@@ -23,6 +23,11 @@ public:
     void topoffStop() override;
     void topoffReset() override;
     void topoffSetLimit(uint16_t ml) override;
+    void thermoSetAuto(bool on) override;
+    void thermoMute() override;
+    void thermoSensorReset() override;
+    void thermoHeater(bool on) override;
+    void thermoFan(uint8_t pct) override;
 
 private:
     void derive();  // group state + alarms from the raw state, bumps model.version
@@ -32,6 +37,10 @@ private:
     void topoffTick(uint32_t nowMs);  // pump cycle, manual session, command answers
     void topoffDerive();              // zone, portions, status, alarms, tile
     void topoffSend(gui::TopoffPending p);
+    void thermoInit();
+    void thermoTick(uint32_t nowMs);  // Service Mode countdown, command answers
+    void thermoDerive();              // heater / fan / state in Auto, alarms, status, tile
+    void thermoSend(gui::ThermoPending p);
 
     // Raw state the keys toggle
     bool offline_[2] = {false, false};
@@ -48,6 +57,15 @@ private:
     uint32_t topoffPhaseMs_ = 0;   // manual portion / pump cycle phase end
     bool topoffPause_ = false;     // manual session: pause between portions
     uint32_t topoffServiceMs_ = 0; // Service Mode start
+    // Thermostat raw state
+    bool thermoOffline_ = false;
+    int thermoTempStep_ = 1;       // index into the temperature steps (key t)
+    bool thermoSensorCause_ = false;  // sensor broken (key f); latched fault until reset
+    bool thermoSensorLatched_ = false;
+    bool thermoHw_ = false;        // hardware fault (key g)
+    bool thermoTrend_ = false;     // heater ineffective warning (key r)
+    uint32_t thermoCmdDueMs_ = 0;
+    uint32_t thermoServiceMs_ = 0; // Service Mode start
     bool rejectNext_ = false;
     bool slowPrograms_ = false;
 

@@ -17,7 +17,7 @@ void onRow(lv_event_t* e) {
     int i = (int)(intptr_t)lv_event_get_user_data(e);
     if (i < 0 || i >= g.m->alarmCount) return;
     Screen t = g.m->alarms[i].target;
-    if (t == Screen::Lamps || t == Screen::Topoff) navigate(t);
+    if (t == Screen::Lamps || t == Screen::Topoff || t == Screen::Thermo) navigate(t);
     else toast("Ekran tego węzła powstanie w kolejnych etapach");
 }
 

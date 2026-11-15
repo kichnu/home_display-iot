@@ -211,6 +211,13 @@ public:
         topoffSend(TopoffPending::Limit, topoff::CMD_SET_DAILY_LIMIT, ml);
     }
 
+    // Thermostat commands: stage T5 (until then ThermoView is empty, the screen shows "Brak danych")
+    void thermoSetAuto(bool) override {}
+    void thermoMute() override {}
+    void thermoSensorReset() override {}
+    void thermoHeater(bool) override {}
+    void thermoFan(uint8_t) override {}
+
 private:
     static void refused() {
         toast(net::connected() ? "Nie wysłano: brak lamp online lub poprzednie polecenie w toku" : "Nie wysłano: brak Wi-Fi",

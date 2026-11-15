@@ -44,6 +44,7 @@ void initFonts() {
     s_fonts.small = makeFont(font_noto_regular_ttf, font_noto_regular_ttf_end, 18, &lv_font_montserrat_14);
     s_fonts.title = makeFont(font_noto_bold_ttf, font_noto_bold_ttf_end, 28, &lv_font_montserrat_28);
     s_fonts.value = makeFont(font_noto_bold_ttf, font_noto_bold_ttf_end, 44, &lv_font_montserrat_40);
+    s_fonts.huge = makeFont(font_noto_bold_ttf, font_noto_bold_ttf_end, 96, &lv_font_montserrat_40);
 }
 
 const Fonts& fonts() { return s_fonts; }
