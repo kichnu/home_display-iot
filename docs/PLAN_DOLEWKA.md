@@ -112,7 +112,7 @@ Po resecie ACK mówi, co zostało (np. alarm zbiornika trwa do uzupełnienia) �
 3. Komendy (w tym limit dobowy z walidacją jak `/api/set-fill-water-max`) przez te same funkcje co handlery HTTP (jedna brama do stanu), `cmd_nonce`, pamięć ostatniego
    `cmd_id` i wyniku.
 4. `manualPortionsAdd(n)`.
-5. Po teście panelu: usunięcie porcji ręcznych z web GUI (decyzja z raportu, odp. 6.1).
+5. Po teście panelu: usunięcie porcji ręcznych z web GUI (decyzja z raportu, odp. 6.1) — wstrzymane 2026-11-15 (etap D6), do rozważenia w przyszłości.
 
 Przed startem w repo dolewki: nieśledzony `docs/ZGODNOSC_REGUL.md` do commita lub decyzji; testy HW z §8 planu
 rezerwy w toku — nie blokują, ale ESP-NOW dochodzi do tego samego firmware.
@@ -133,7 +133,7 @@ Każdy etap kończy się buildem, testem na sprzęcie i commitem.
 | D3 | Adapter `src/topoff/` + model + UI odczytu na panelu, `TOPOFF_OFFLINE` | panel | stan zgodny z web GUI dolewki, alarm po odłączeniu — ✅ 2026-11-15 (panel 0.7.0: kafelek i ekran L2 z danymi na żywo, sterowanie wyszarzone do D5; dane zgodne z web GUI, po wyłączeniu dolewki alarm P2 „brak łączności”) |
 | D4 | `TO_CMD` / `TO_ACK` w dolewce, nonce, `manualPortionsAdd(n)`, `SET_DAILY_LIMIT` | dolewka | komendy z narzędzia testowego/panelu, powtórka odrzucona — ✅ 2026-11-15 (dolewka FW 1.2.0, panel 0.7.1, testy klawiszami Serial panelu: porcje, STOP, `NOT_SERVICE`, ten sam cmd_id bez ponownego wykonania, `STALE_NONCE`, limit + `OUT_OF_RANGE`, `ERROR_RESET`; test OTA dolewki po późnym Wi-Fi do zrobienia) |
 | D5 | Sterowanie na panelu: Auto/Serwis, porcje (bargraf + ON) + STOP, kasowanie alarmu, limit dobowy | panel | macierz testów niżej — ✅ 2026-11-15 (panel 0.8.0: sterowanie z ekranu, pending do ACK i statusu, toast z wynikiem/odmową) |
-| D6 | Usunięcie porcji ręcznych z web GUI dolewki | dolewka | GUI bez przycisku, panel jedyną drogą |
+| D6 | Usunięcie porcji ręcznych z web GUI dolewki | dolewka | GUI bez przycisku, panel jedyną drogą — ⏸ wstrzymane 2026-11-15, do rozważenia w przyszłości (porcje ręczne zostają w web GUI i na panelu) |
 
 ## Testy
 
