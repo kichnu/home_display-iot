@@ -430,4 +430,13 @@ void refresh() {
 }
 
 }  // namespace thermo
+
+void thermoTileLines(const ThermoView& t, char* line1, size_t n1, char* line2, size_t n2) {
+    if (t.tempValid) thermo::formatTemp(t.tempX100, line1, n1);
+    else snprintf(line1, n1, "brak odczytu");
+    if (!t.autoMode) snprintf(line2, n2, "Serwis · Auto za %u min", (t.serviceLeftS + 59) / 60);
+    else if (t.fanPct) snprintf(line2, n2, "%s · wentylator %u %%", thermo::stateName(t.state), t.fanPct);
+    else snprintf(line2, n2, "%s", thermo::stateName(t.state));
+}
+
 }  // namespace gui

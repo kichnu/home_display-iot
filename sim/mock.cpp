@@ -86,7 +86,7 @@ void Mock::init() {
     t[1] = {"Dozownik", Sev::Ok, "4 kanały OK", "następna dawka 18:00", false, Screen::Overview};
     t[2] = {"Termostat", Sev::Ok, "", "", true, Screen::Thermo};
     t[3] = {"Timer", Sev::Ok, "3/4 włączone", "CO₂ do 20:00", false, Screen::Overview};
-    t[4] = {"Panel", Sev::Ok, "Wi-Fi -59 dBm", "FW 0.8.0", false, Screen::Overview};
+    t[4] = {"Panel", Sev::Ok, "Wi-Fi -59 dBm", "FW 0.9.0", false, Screen::Overview};
     topoffInit();
     thermoInit();
     fillPrograms();
@@ -216,13 +216,7 @@ void Mock::derive() {
             copy(t.line1, sizeof(t.line1), "Brak łączności");
             copy(t.line2, sizeof(t.line2), "");
         } else {
-            int v = (th.tempX100 + 5) / 10;
-            if (th.tempValid) snprintf(t.line1, sizeof(t.line1), "%d,%d °C", v / 10, v % 10);
-            else copy(t.line1, sizeof(t.line1), "brak odczytu");
-            const char* st[] = {"Czuwa", "Grzeje", "Chłodzi", "Za zimno", "Za ciepło", "Awaria czujnika", "Grzałka nieskuteczna"};
-            if (!th.autoMode) snprintf(t.line2, sizeof(t.line2), "Serwis · Auto za %u min", (th.serviceLeftS + 59) / 60);
-            else if (th.fanPct) snprintf(t.line2, sizeof(t.line2), "%s · wentylator %u %%", st[th.state], th.fanPct);
-            else copy(t.line2, sizeof(t.line2), st[th.state < 7 ? th.state : 0]);
+            gui::thermoTileLines(th, t.line1, sizeof(t.line1), t.line2, sizeof(t.line2));
         }
     }
     m.tiles[4].status = m.wifi ? Sev::Ok : Sev::P2;

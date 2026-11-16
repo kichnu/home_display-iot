@@ -10,6 +10,7 @@
 #include "lamps/lamp_control.h"
 #include "lamps/lamp_listener.h"
 #include "net/network.h"
+#include "thermo/thermo_listener.h"
 #include "topoff/topoff_listener.h"
 #include "version.h"
 
@@ -24,6 +25,7 @@ constexpr uint32_t WIFI_GRACE_MS = 30000;   // first connection after boot is no
 constexpr uint32_t LAMPS_GRACE_MS = 60000;  // heartbeats every 15 s: no lamp after 60 s = alarm
 constexpr uint32_t TIME_GRACE_MS = 120000;
 constexpr uint32_t TOPOFF_GRACE_MS = 60000;  // status every 5 s: none after 60 s = alarm
+constexpr uint32_t THERMO_GRACE_MS = 60000;  // as the top-off node
 // After the last ACK the GUI stays "pending" until the heartbeats show the new state (no mismatch
 // flash in between), at most this long
 constexpr uint32_t CONFIRM_MS = 4000;
@@ -46,13 +48,28 @@ static_assert((int)TS_OK == (int)topoff::NS_OK && (int)TS_WARNING == (int)topoff
                   (int)TS_ALARM == (int)topoff::NS_ALARM && (int)TS_FAULT == (int)topoff::NS_FAULT &&
                   (int)TS_SERVICE == (int)topoff::NS_SERVICE,
               "GUI top-off status = protocol status");
+static_assert(THERMO_AL_TEMP_LOW == thermo::AL_TEMP_LOW && THERMO_AL_TEMP_HIGH == thermo::AL_TEMP_HIGH &&
+                  THERMO_AL_TREND == thermo::AL_TREND && THERMO_AL_SENSOR_FAULT == thermo::AL_SENSOR_FAULT &&
+                  THERMO_AL_HW_FAULT == thermo::AL_HW_FAULT,
+              "GUI thermostat alarm bits = protocol bits");
+static_assert((int)TS_OK == (int)thermo::NS_OK && (int)TS_WARNING == (int)thermo::NS_WARNING &&
+                  (int)TS_ALARM == (int)thermo::NS_ALARM && (int)TS_FAULT == (int)thermo::NS_FAULT &&
+                  (int)TS_SERVICE == (int)thermo::NS_SERVICE,
+              "GUI thermostat status = protocol status");
+static_assert((int)TH_IDLE == (int)thermo::AS_IDLE && (int)TH_HEATING == (int)thermo::AS_HEATING &&
+                  (int)TH_COOLING == (int)thermo::AS_COOLING && (int)TH_ALARM_LOW == (int)thermo::AS_ALARM_LOW &&
+                  (int)TH_ALARM_HIGH == (int)thermo::AS_ALARM_HIGH &&
+                  (int)TH_SENSOR_FAULT == (int)thermo::AS_SENSOR_FAULT && (int)TH_TREND == (int)thermo::AS_TREND_ALARM,
+              "GUI thermostat state = protocol state");
 
 // Alarm "since" per condition: per lamp slot, and for the group / panel
 enum LampAlarm { LA_OFFLINE, LA_FRAM, LA_RTC, LA_ORPHAN, LA_COUNT };
-enum PanelAlarm { PA_MISMATCH, PA_NO_LAMPS, PA_WIFI, PA_TIME, PA_TOPOFF_OFFLINE, PA_TOPOFF_NONE, PA_COUNT };
+enum PanelAlarm { PA_MISMATCH, PA_NO_LAMPS, PA_WIFI, PA_TIME, PA_TOPOFF_OFFLINE, PA_TOPOFF_NONE, PA_THERMO_OFFLINE,
+                  PA_THERMO_NONE, PA_COUNT };
 time_t s_lampSince[lamps::MAX_LAMPS][LA_COUNT];
 time_t s_panelSince[PA_COUNT];
 time_t s_topoffSince[TOPOFF_ALARM_COUNT];
+time_t s_thermoSince[THERMO_ALARM_COUNT];
 
 Model s_model = {};
 Model s_next = {};
@@ -211,7 +228,7 @@ public:
         topoffSend(TopoffPending::Limit, topoff::CMD_SET_DAILY_LIMIT, ml);
     }
 
-    // Thermostat commands: stage T5 (until then ThermoView is empty, the screen shows "Brak danych")
+    // Thermostat commands: stage T5 (until then ThermoView::controls = false, the screen is read only)
     void thermoSetAuto(bool) override {}
     void thermoMute() override {}
     void thermoSensorReset() override {}
@@ -354,8 +371,53 @@ void fillTopoffTile(Model& m) {
     else snprintf(t.line2, sizeof(t.line2), "24 h: %u / %u ml", tv.volume24h, tv.dailyLimit);
 }
 
+void fillThermo(Model& m) {
+    const thermo::Node& n = thermo::node();
+    ThermoView& t = m.thermo;
+    if (!n.have) return;
+    const thermo::StatusBody& s = n.st;
+    t.present = true;
+    t.online = thermo::online();
+    t.controls = false;  // commands: stage T5
+    t.lastSeen = n.lastUtc;
+    copy(t.name, sizeof(t.name), s.name);
+    t.status = s.node_status;
+    t.autoMode = s.auto_mode != 0;
+    t.serviceLeftS = s.service_left_s;
+    t.state = s.algo_state <= TH_TREND ? s.algo_state : (uint8_t)TH_IDLE;
+    t.tempValid = s.flags & thermo::SF_TEMP_VALID;
+    t.tempX100 = s.temp_x100;
+    t.heaterOn = s.flags & thermo::SF_HEATER_ON;
+    t.fanPct = s.fan_pct <= 100 ? s.fan_pct : 100;
+    t.inBuffer = s.flags & thermo::SF_IN_BUFFER;
+    t.alarms = s.alarms;
+    t.muted = s.muted & s.alarms;
+    t.pending = ThermoPending::None;
+}
+
+// Temperature on line 1, state / Service countdown on line 2 (texts shared with the simulator)
+void fillThermoTile(Model& m) {
+    const ThermoView& tv = m.thermo;
+    NodeTile& t = m.tiles[m.tileCount++];
+    copy(t.title, sizeof(t.title), "Termostat");
+    t.hasScreen = true;
+    t.target = Screen::Thermo;
+    if (!tv.present || !tv.online) {
+        t.status = Sev::Offline;
+        copy(t.line1, sizeof(t.line1), tv.present ? "Brak łączności" : "Brak danych");
+        return;
+    }
+    Sev worst = Sev::Ok;
+    for (int i = 0; i < THERMO_ALARM_COUNT; i++)
+        if ((tv.alarms & THERMO_ALARMS[i].bit) && (uint8_t)THERMO_ALARMS[i].prio > (uint8_t)worst)
+            worst = THERMO_ALARMS[i].prio;
+    t.status = worst;
+    thermoTileLines(tv, t.line1, sizeof(t.line1), t.line2, sizeof(t.line2));
+}
+
 void fillTiles(Model& m) {
     fillTopoffTile(m);
+    fillThermoTile(m);
     NodeTile& t = m.tiles[m.tileCount++];
     copy(t.title, sizeof(t.title), "Panel");
     t.status = m.wifi ? Sev::Ok : Sev::P2;
@@ -410,6 +472,19 @@ void fillAlarms(Model& m) {
     for (int i = 0; i < TOPOFF_ALARM_COUNT; i++)
         add(tv.online && (tv.alarms & TOPOFF_ALARMS[i].bit), s_topoffSince[i], TOPOFF_ALARMS[i].prio, "Dolewka",
             TOPOFF_ALARMS[i].text, Screen::Topoff);
+    // Thermostat: offline = P2 (THERMO_OFFLINE), otherwise one alarm per bit (muted ones say so)
+    const ThermoView& th = m.thermo;
+    add(th.present && !th.online, s_panelSince[PA_THERMO_OFFLINE], Sev::P2, "Termostat", "brak łączności",
+        Screen::Thermo);
+    add(!th.present && up > THERMO_GRACE_MS && thermo::stats().enabled, s_panelSince[PA_THERMO_NONE], Sev::P2,
+        "Termostat", "brak statusu termostatu", Screen::Thermo);
+    for (int i = 0; i < THERMO_ALARM_COUNT; i++) {
+        char text[64];
+        snprintf(text, sizeof(text), "%s%s", THERMO_ALARMS[i].text,
+                 (th.muted & THERMO_ALARMS[i].bit) ? " (wyciszony)" : "");
+        add(th.online && (th.alarms & THERMO_ALARMS[i].bit), s_thermoSince[i], THERMO_ALARMS[i].prio, "Termostat",
+            text, Screen::Thermo);
+    }
     add(!m.wifi && up > WIFI_GRACE_MS, s_panelSince[PA_WIFI], Sev::P2, "Panel", "brak Wi-Fi", Screen::Overview);
     add(!m.timeValid && up > TIME_GRACE_MS, s_panelSince[PA_TIME], Sev::P3, "Panel", "brak czasu (NTP)",
         Screen::Overview);
@@ -480,6 +555,7 @@ void build(Model& m) {
     fillLamps(m);
     fillPrograms(m);
     fillTopoff(m);
+    fillThermo(m);
     fillTiles(m);
     fillAlarms(m);
 }

@@ -78,7 +78,7 @@ rośnie o ~1 co 5 s. Poprawka w lampach (obcy `magic` ignorowany) — razem z ko
 | T0 | Plan, odpowiedzi na pytania, aktualizacja `docs/nodes/termostat.md` | panel | plan zaakceptowany |
 | T1 | `TH_STATUS` w termostacie (tylko nadawanie) | termostat | ramki w logu panelu, `bad HMAC 0`, wartości = web GUI — ✅ 2026-11-15 (termostat FW 1.0.0 — pierwsza wersja w statusie, panel: listener + Serial `h`) |
 | T2 | Ekrany w symulatorze (kafelek, L2, alarmy) | panel | układ zaakceptowany na PC — ✅ 2026-11-15 (temperatura 96 px w kolorze stanu, kontrolki grzałki / wentylatora, rząd sterowania ręcznego tylko w Serwisie) |
-| T3 | Adapter `src/thermo/` + dane na żywo, `THERMO_OFFLINE` | panel | stan zgodny z web GUI, alarm po odłączeniu; pamięć (Serial `i`) po dodaniu czcionki 96 px |
+| T3 | Adapter `src/thermo/` + dane na żywo, `THERMO_OFFLINE` | panel | stan zgodny z web GUI, alarm po odłączeniu; pamięć (Serial `i`) po dodaniu czcionki 96 px — ✅ 2026-11-16 (panel FW 0.9.0; heap internal 82,5 KB wolne, min 77,3 KB; alarm HW termostatu jako P1 na pasku, znika po Acknowledge) |
 | T4 | `TH_CMD` / `TH_ACK` w termostacie + klawisze testowe Serial panelu | termostat + panel | komendy, powtórka bez ponownego wykonania, `STALE_NONCE` |
 | T5 | Sterowanie z ekranu | panel | macierz testów niżej |
 

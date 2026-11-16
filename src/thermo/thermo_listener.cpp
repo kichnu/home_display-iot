@@ -5,6 +5,7 @@
 #include <mbedtls/md.h>
 #include <string.h>
 
+#include "../net/network.h"
 #include "wifi_secret.h"
 
 namespace thermo {
@@ -14,6 +15,7 @@ namespace {
 uint8_t s_key[32];
 Stats s_stats = {};
 Node s_node = {};
+constexpr time_t UTC_VALID_MIN = 1735689600;  // 2025-01-01
 uint32_t s_bootId = 0;
 uint32_t s_lastSeq = 0;
 
@@ -122,6 +124,7 @@ void handleFrame(const uint8_t* mac, int8_t rssi, const uint8_t* data, size_t le
     memcpy(s_node.mac, mac, 6);
     s_node.st = b;
     s_node.lastMs = millis();
+    s_node.lastUtc = net::timeValid() || time(nullptr) >= UTC_VALID_MIN ? time(nullptr) : 0;
     s_node.count++;
     s_node.rssi = rssi;
     s_node.have = true;
@@ -129,6 +132,8 @@ void handleFrame(const uint8_t* mac, int8_t rssi, const uint8_t* data, size_t le
 }
 
 const Node& node() { return s_node; }
+
+bool online() { return s_node.have && millis() - s_node.lastMs < OFFLINE_MS; }
 const Stats& stats() { return s_stats; }
 
 void printStatus() {
