@@ -1,6 +1,6 @@
 # Plan wdrożenia panelu — etap 3: termostat
 
-Stan: 2026-11-15, szkic do akceptacji (pytania na końcu).
+Stan: 2026-11-16, etap zamknięty (T0–T5); dwa scenariusze T5 sprawdzone tylko w symulatorze — niżej.
 
 Kontekst: `docs/nodes/termostat.md` (lista punktów v1), `docs/PLAN_DOLEWKA.md` (wzorzec: transport, etapy,
 pending/ACK), `~/dev-knowledge/esp32/espnow-sync.md`. Projekt węzła: `thermo_control-iot` (ESP32-S3,
@@ -88,18 +88,18 @@ rośnie o ~1 co 5 s. Poprawka w lampach (obcy `magic` ignorowany) — razem z ko
 | T2 | Ekrany w symulatorze (kafelek, L2, alarmy) | panel | układ zaakceptowany na PC — ✅ 2026-11-15 (temperatura 96 px w kolorze stanu, kontrolki grzałki / wentylatora, rząd sterowania ręcznego tylko w Serwisie) |
 | T3 | Adapter `src/thermo/` + dane na żywo, `THERMO_OFFLINE` | panel | stan zgodny z web GUI, alarm po odłączeniu; pamięć (Serial `i`) po dodaniu czcionki 96 px — ✅ 2026-11-16 (panel FW 0.9.0; heap internal 82,5 KB wolne, min 77,3 KB; alarm HW termostatu jako P1 na pasku, znika po Acknowledge) |
 | T4 | `TH_CMD` / `TH_ACK` w termostacie + klawisze testowe Serial panelu | termostat + panel | komendy, powtórka bez ponownego wykonania, `STALE_NONCE` — ✅ 2026-11-16 (termostat FW 1.1.0, panel FW 0.10.0; reguły bezpieczeństwa w sterowniku, patrz Transport) |
-| T5 | Sterowanie z ekranu | panel | macierz testów niżej |
+| T5 | Sterowanie z ekranu | panel | macierz testów niżej — ✅ 2026-11-16 (panel FW 0.11.0) |
 
 ## Testy (T5)
 
 | Scenariusz | Oczekiwane | Wynik |
 |---|---|---|
-| Auto → Serwis → Auto | zmiana < 1 s, web GUI zgodne, odliczanie widoczne, buzzer cichnie po wejściu w Serwis | |
-| Grzałka / wentylator ręcznie w Serwisie | stan zgodny z web GUI, ▼▲ co 5 % | |
-| Sterowanie ręczne w Auto | przyciski wyszarzone z podpowiedzią | |
-| Wycisz alarm (`TEMP_LOW` / `TEMP_HIGH`) | buzzer cichnie, alarm zostaje na pasku; nowe wystąpienie znów dzwoni; przy innych alarmach przycisk nieaktywny | |
-| Awaria czujnika → kasowanie | P1 na pasku, dialog, latch skasowany (albo wraca, gdy czujnik dalej nie działa) | |
-| Termostat offline | `THERMO_OFFLINE` ≤ 15 s, sterowanie zablokowane | |
+| Auto → Serwis → Auto | zmiana < 1 s, web GUI zgodne, odliczanie widoczne, buzzer cichnie po wejściu w Serwis | ✅ sprzęt |
+| Grzałka / wentylator ręcznie w Serwisie | stan zgodny z web GUI, ▼▲ co 5 % | ✅ sprzęt |
+| Sterowanie ręczne w Auto | przyciski wyszarzone z podpowiedzią | ✅ sprzęt |
+| Wycisz alarm (`TEMP_LOW` / `TEMP_HIGH`) | buzzer cichnie, alarm zostaje na pasku; nowe wystąpienie znów dzwoni; przy innych alarmach przycisk nieaktywny | ⚠ tylko symulator + `ALARM_MUTE` z Serial (T4) — na sprzęcie przy pierwszym prawdziwym alarmie |
+| Awaria czujnika → kasowanie | P1 na pasku, dialog, latch skasowany (albo wraca, gdy czujnik dalej nie działa) | ⚠ tylko symulator + `SENSOR_RESET` z Serial (T4) — na sprzęcie przy okazji (odpięcie czujnika) |
+| Termostat offline | `THERMO_OFFLINE` ≤ 15 s, sterowanie zablokowane | ✅ sprzęt |
 
 ## Pytania
 
