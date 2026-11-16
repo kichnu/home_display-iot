@@ -123,6 +123,9 @@ Top-off command tests (stage D4, answer logged as `Topoff: ACK ...`): `A` Auto, 
 `X` stop portions, `E` error reset, `L` daily limit +50 ml, `K` daily limit 50 ml (out of range), `D` repeat
 the last command with the same `cmd_id` (node must not run it again), `Y` last command with a new `cmd_id`
 and the old nonce (`STALE_NONCE`).
+Thermostat command tests (stage T4, answer logged as `Thermo: ACK ...`): `U` Auto, `V` Service, `M` mute
+alarm, `R` sensor fault reset, `H` / `J` heater ON / OFF, `F` / `G` fan 50 % / 0 %, `O` fan 150 % (out of range),
+`Q` repeat the last command with the same `cmd_id`, `Z` last command with a new `cmd_id` and the old nonce.
 
 The original bring-up test (patterns, touch paint, DI read test) is in git history (`27efbea`) and
 in `~/Dokumenty/My_apps/TOOLS/test_ESP32-S3-Touch-LCD-4.3B/`.

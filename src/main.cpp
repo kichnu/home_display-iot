@@ -65,6 +65,26 @@ void topoffTest(char c) {
     if (!ok) Serial.println("Topoff: command not sent (no key, node offline or a command in flight)");
 }
 
+// Thermostat command tests (stage T4), answer logged as "Thermo: ACK ..."
+void thermoTest(char c) {
+    using namespace thermo;
+    bool ok = false;
+    switch (c) {
+        case 'U': ok = sendCommand(CMD_SET_MODE, 1); break;
+        case 'V': ok = sendCommand(CMD_SET_MODE, 0); break;
+        case 'M': ok = sendCommand(CMD_ALARM_MUTE, 0); break;
+        case 'R': ok = sendCommand(CMD_SENSOR_RESET, 0); break;
+        case 'H': ok = sendCommand(CMD_HEATER, 1); break;
+        case 'J': ok = sendCommand(CMD_HEATER, 0); break;
+        case 'F': ok = sendCommand(CMD_FAN, 50); break;
+        case 'G': ok = sendCommand(CMD_FAN, 0); break;
+        case 'O': ok = sendCommand(CMD_FAN, 150); break;
+        case 'Q': ok = testRepeatLast(); break;
+        case 'Z': ok = testStaleNonce(); break;
+    }
+    if (!ok) Serial.println("Thermo: command not sent (no key, node offline or a command in flight)");
+}
+
 void handleSerial() {
     while (Serial.available()) {
         char c = Serial.read();
@@ -83,6 +103,8 @@ void handleSerial() {
             thermo::printStatus();
         } else if (c && strchr("ASPXELKDY", c)) {
             topoffTest(c);
+        } else if (c && strchr("UVMRHJFGOQZ", c)) {
+            thermoTest(c);
         } else if (c == 'f') {
             g_perfShown = !g_perfShown;
             if (g_perfShown) lv_sysmon_show_performance(nullptr);
@@ -100,7 +122,7 @@ void setup() {
     Serial.begin(115200);
     uint32_t t0 = millis();
     while (!Serial && millis() - t0 < 1500) delay(10);
-    Serial.println("\n=== home_display-iot " PANEL_FW_VERSION ": stage 6 + D5 + T3 (GUI, lamps, top-off, thermostat status read only) ===");
+    Serial.println("\n=== home_display-iot " PANEL_FW_VERSION ": stage 6 + D5 + T4 (GUI, lamps, top-off, thermostat status + Serial commands) ===");
     Serial.printf("Chip %s rev %d, PSRAM %u B\n", ESP.getChipModel(), ESP.getChipRevision(), ESP.getPsramSize());
 
     Wire.begin(PIN_I2C_SDA, PIN_I2C_SCL, I2C_FREQ_HZ);
@@ -140,6 +162,7 @@ void loop() {
     net::update();
     lamps::update();
     topoff::update();
+    thermo::update();
     app::update();
     ui::update();
     gui::update();

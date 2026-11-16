@@ -39,8 +39,16 @@ z kluczem z hasła Wi-Fi i kontekstem `THERMO-ESPNOW-v1:`, nonce dla komend. W p
 | `TH_ACK` | termostat → panel | `cmd_id`, wynik, wartość faktyczna, alarmy po komendzie |
 
 Komendy: `SET_MODE` (1 Auto / 0 Serwis, idempotentnie), `ALARM_MUTE`, `SENSOR_RESET`, `HEATER` (0/1, tylko Serwis),
-`FAN` (0–100 %, tylko Serwis). Wyniki ACK: `OK`, `NOT_SERVICE`, `SENSOR_FAULT` (ręczne sterowanie przy latchu —
-do ustalenia w kodzie, co dziś robi web), `STALE_NONCE`, `OUT_OF_RANGE`, `BAD_CMD`.
+`FAN` (0–100 %, tylko Serwis). Wyniki ACK: `OK`, `NOT_SERVICE`, `SENSOR_FAULT`, `TEMP_HIGH`, `STALE_NONCE`,
+`OUT_OF_RANGE`, `BAD_CMD`.
+
+Reguły w sterowniku, nie w GUI (ustalenie 2026-11-16) — przedtem web pilnował Serwisu tylko w przeglądarce, a w Serwisie
+algorytm nie sprawdzał czujnika:
+1. Bramka komend `core/node_commands` wspólna dla HTTP i ESP-NOW: grzałka / wentylator tylko w Serwisie (`NOT_SERVICE`,
+   także HTTP 409); włączenie grzałki odrzucone przy awarii czujnika (`SENSOR_FAULT`) i powyżej progu `TEMP_HIGH`
+   (`TEMP_HIGH`); wyłączenie zawsze; wentylator bez blokady czujnika.
+2. Wykrywanie awarii czujnika także w Serwisie: zatrzask, grzałka OFF, buzzer (ręczny wentylator zostaje).
+3. W Serwisie ręczna grzałka wyłączana powyżej progu `TEMP_HIGH` (bez flagi alarmu — alarmy temperatury liczy Auto).
 
 ## Ekrany
 
@@ -66,7 +74,7 @@ do ustalenia w kodzie, co dziś robi web), `STALE_NONCE`, `OUT_OF_RANGE`, `BAD_C
 1. `src/network/espnow_panel.*` jak w dolewce: init po Wi-Fi, `WiFi.setSleep(false)`, kolejka RX, obsługa w `loop()`.
 2. Komendy przez te same funkcje co handlery HTTP; `/api/system-toggle` dostaje `enabled=0|1` (idempotentnie, bez
    parametru przełącza jak dziś), wejście w Serwis wycisza buzzer jak dziś.
-3. Bez zmian w web GUI.
+3. Bez zmian w web GUI (odmowa z bramki = HTTP 409, GUI po prostu odświeża stan).
 
 Odłożone (jak przy dolewce): lampy liczą ramki termostatu (inny `magic`) jako błędne — `rx_bad` w web GUI lamp
 rośnie o ~1 co 5 s. Poprawka w lampach (obcy `magic` ignorowany) — razem z kolejną zmianą w lampach.
@@ -79,7 +87,7 @@ rośnie o ~1 co 5 s. Poprawka w lampach (obcy `magic` ignorowany) — razem z ko
 | T1 | `TH_STATUS` w termostacie (tylko nadawanie) | termostat | ramki w logu panelu, `bad HMAC 0`, wartości = web GUI — ✅ 2026-11-15 (termostat FW 1.0.0 — pierwsza wersja w statusie, panel: listener + Serial `h`) |
 | T2 | Ekrany w symulatorze (kafelek, L2, alarmy) | panel | układ zaakceptowany na PC — ✅ 2026-11-15 (temperatura 96 px w kolorze stanu, kontrolki grzałki / wentylatora, rząd sterowania ręcznego tylko w Serwisie) |
 | T3 | Adapter `src/thermo/` + dane na żywo, `THERMO_OFFLINE` | panel | stan zgodny z web GUI, alarm po odłączeniu; pamięć (Serial `i`) po dodaniu czcionki 96 px — ✅ 2026-11-16 (panel FW 0.9.0; heap internal 82,5 KB wolne, min 77,3 KB; alarm HW termostatu jako P1 na pasku, znika po Acknowledge) |
-| T4 | `TH_CMD` / `TH_ACK` w termostacie + klawisze testowe Serial panelu | termostat + panel | komendy, powtórka bez ponownego wykonania, `STALE_NONCE` |
+| T4 | `TH_CMD` / `TH_ACK` w termostacie + klawisze testowe Serial panelu | termostat + panel | komendy, powtórka bez ponownego wykonania, `STALE_NONCE` — ✅ 2026-11-16 (termostat FW 1.1.0, panel FW 0.10.0; reguły bezpieczeństwa w sterowniku, patrz Transport) |
 | T5 | Sterowanie z ekranu | panel | macierz testów niżej |
 
 ## Testy (T5)
