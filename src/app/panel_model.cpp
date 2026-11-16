@@ -199,6 +199,82 @@ void trackTopoff() {
     topoffResultToast(c);
 }
 
+// Thermostat command from the GUI (stage T5): same flow as the top-off node. The node checks every
+// rule itself (Service Mode, sensor fault, TEMP_HIGH) — a refusal comes back as a toast.
+struct ThermoTracker {
+    bool on;
+    ThermoPending kind;
+    bool autoMode;       // SET_MODE target
+    bool heater;         // HEATER target
+    uint8_t fan;         // FAN target
+    uint32_t seenFinished;
+    uint32_t ackedMs;    // command finished (ACK or none); 0 = still waiting
+    uint32_t statusCount;  // node().count at ackedMs
+} s_thermo = {};
+
+void thermoSend(ThermoPending kind, uint8_t cmd, uint16_t arg) {
+    if (!thermo::sendCommand(cmd, arg)) {
+        toast(thermo::online() ? "Nie wysłano: poprzednie polecenie termostatu w toku" : "Nie wysłano: termostat offline",
+              Sev::P2);
+        return;
+    }
+    s_thermo.on = true;
+    s_thermo.kind = kind;
+    s_thermo.seenFinished = thermo::command().finished;
+    s_thermo.ackedMs = 0;
+    s_lastBuildMs = 0;  // show "pending" at once
+}
+
+void thermoResultToast(const thermo::Command& c) {
+    if (c.state != thermo::CmdState::Acked) return toast("Termostat: brak potwierdzenia — sprawdź stan", Sev::P2);
+    const thermo::AckBody& a = c.ack;
+    char msg[96];
+    switch (a.result) {
+        case thermo::ACK_OK: break;
+        case thermo::ACK_NOT_SERVICE:
+            return toast("Termostat odrzucił: ręczne sterowanie tylko w trybie Serwis", Sev::P2);
+        case thermo::ACK_SENSOR_FAULT:
+            return toast("Termostat odrzucił: awaria czujnika — grzałka zablokowana", Sev::P2);
+        case thermo::ACK_TEMP_HIGH:
+            return toast("Termostat odrzucił: temperatura powyżej progu alarmu — grzałka zablokowana", Sev::P2);
+        case thermo::ACK_STALE_NONCE:
+            return toast("Termostat odrzucił: nieaktualne polecenie — spróbuj ponownie", Sev::P2);
+        case thermo::ACK_OUT_OF_RANGE: return toast("Termostat odrzucił: wentylator poza zakresem 0–100 %", Sev::P2);
+        default:
+            snprintf(msg, sizeof(msg), "Termostat odrzucił polecenie (%s)", thermo::ackName(a.result));
+            return toast(msg, Sev::P2);
+    }
+    switch (c.body.cmd) {
+        case thermo::CMD_SET_MODE:
+            if (a.value) return toast("Termostat: tryb Auto");
+            snprintf(msg, sizeof(msg), "Termostat: tryb Serwis (powrót do Auto po %u min)",
+                     (thermo::node().st.service_left_s + 59) / 60);
+            return toast(msg);
+        case thermo::CMD_ALARM_MUTE:
+            if (a.muted) return toast("Termostat: alarm wyciszony — wróci przy kolejnym wystąpieniu");
+            return toast("Termostat: brak alarmu do wyciszenia", Sev::P3);
+        case thermo::CMD_SENSOR_RESET:
+            return toast("Termostat: awaria czujnika skasowana — wróci przy pomiarze, jeśli czujnik dalej nie działa");
+        default: return;  // heater / fan: the new state is on the buttons
+    }
+}
+
+void trackThermo() {
+    if (!s_thermo.on) return;
+    const thermo::Command& c = thermo::command();
+    if (c.state == thermo::CmdState::Waiting || c.finished == s_thermo.seenFinished) return;
+    if (!s_thermo.ackedMs) {
+        s_thermo.ackedMs = millis() | 1;
+        s_thermo.statusCount = thermo::node().count;
+    }
+    // Keep "pending" until the node's status shows the result (no flash of the old state)
+    bool statusAfter = thermo::node().count != s_thermo.statusCount;
+    if (c.state == thermo::CmdState::Acked && !statusAfter && millis() - s_thermo.ackedMs < CONFIRM_MS) return;
+    s_thermo.on = false;
+    s_lastBuildMs = 0;
+    thermoResultToast(c);
+}
+
 class PanelCommands : public Commands {
 public:
     void setMode(uint8_t mode) override {
@@ -228,12 +304,21 @@ public:
         topoffSend(TopoffPending::Limit, topoff::CMD_SET_DAILY_LIMIT, ml);
     }
 
-    // Thermostat commands: stage T5 (until then ThermoView::controls = false, the screen is read only)
-    void thermoSetAuto(bool) override {}
-    void thermoMute() override {}
-    void thermoSensorReset() override {}
-    void thermoHeater(bool) override {}
-    void thermoFan(uint8_t) override {}
+    // Thermostat commands (stage T5): the node validates them, the result comes in the ACK and the status
+    void thermoSetAuto(bool on) override {
+        s_thermo.autoMode = on;
+        thermoSend(ThermoPending::Mode, thermo::CMD_SET_MODE, on ? 1 : 0);
+    }
+    void thermoMute() override { thermoSend(ThermoPending::Mute, thermo::CMD_ALARM_MUTE, 0); }
+    void thermoSensorReset() override { thermoSend(ThermoPending::SensorReset, thermo::CMD_SENSOR_RESET, 0); }
+    void thermoHeater(bool on) override {
+        s_thermo.heater = on;
+        thermoSend(ThermoPending::Heater, thermo::CMD_HEATER, on ? 1 : 0);
+    }
+    void thermoFan(uint8_t pct) override {
+        s_thermo.fan = pct;
+        thermoSend(ThermoPending::Fan, thermo::CMD_FAN, pct);
+    }
 
 private:
     static void refused() {
@@ -378,7 +463,7 @@ void fillThermo(Model& m) {
     const thermo::StatusBody& s = n.st;
     t.present = true;
     t.online = thermo::online();
-    t.controls = false;  // commands: stage T5
+    t.controls = thermo::stats().enabled;  // key derived (stage T5)
     t.lastSeen = n.lastUtc;
     copy(t.name, sizeof(t.name), s.name);
     t.status = s.node_status;
@@ -392,7 +477,10 @@ void fillThermo(Model& m) {
     t.inBuffer = s.flags & thermo::SF_IN_BUFFER;
     t.alarms = s.alarms;
     t.muted = s.muted & s.alarms;
-    t.pending = ThermoPending::None;
+    t.pending = s_thermo.on ? s_thermo.kind : ThermoPending::None;
+    t.pendingAuto = s_thermo.autoMode;
+    t.pendingHeater = s_thermo.heater;
+    t.pendingFan = s_thermo.fan;
 }
 
 // Temperature on line 1, state / Service countdown on line 2 (texts shared with the simulator)
@@ -565,6 +653,7 @@ void build(Model& m) {
 void update() {
     trackCommand();
     trackTopoff();
+    trackThermo();
     if (s_lastBuildMs && millis() - s_lastBuildMs < REBUILD_MS) return;
     s_lastBuildMs = millis();
     build(s_next);

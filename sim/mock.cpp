@@ -86,7 +86,7 @@ void Mock::init() {
     t[1] = {"Dozownik", Sev::Ok, "4 kanały OK", "następna dawka 18:00", false, Screen::Overview};
     t[2] = {"Termostat", Sev::Ok, "", "", true, Screen::Thermo};
     t[3] = {"Timer", Sev::Ok, "3/4 włączone", "CO₂ do 20:00", false, Screen::Overview};
-    t[4] = {"Panel", Sev::Ok, "Wi-Fi -59 dBm", "FW 0.10.0", false, Screen::Overview};
+    t[4] = {"Panel", Sev::Ok, "Wi-Fi -59 dBm", "FW 0.11.0", false, Screen::Overview};
     topoffInit();
     thermoInit();
     fillPrograms();
@@ -515,11 +515,13 @@ void Mock::thermoDerive() {
     t.tempX100 = TH_TEMPS[thermoTempStep_];
     bool low = t.tempValid && t.tempX100 < 2300, high = t.tempValid && t.tempX100 > 2750;
 
-    if (thermoSensorLatched_) {  // node: heater and fan stopped until the reset
+    if (thermoSensorLatched_) {  // node: heater stopped until the reset (fan too in Auto)
         t.heaterOn = false;
-        t.fanPct = 0;
+        if (t.autoMode) t.fanPct = 0;
         t.state = TH_SENSOR_FAULT;
-    } else if (t.autoMode) {     // node algorithm (Service Mode: manual heater / fan stay)
+    } else if (!t.autoMode) {    // Service Mode: manual heater off above the TEMP_HIGH threshold
+        if (high) t.heaterOn = false;
+    } else {                     // Auto: node algorithm
         t.heaterOn = low || t.tempX100 < 2500;
         t.fanPct = high ? 100 : t.tempX100 >= 2600 ? (uint8_t)(30 + (t.tempX100 - 2600) * 70 / 150) : 0;
         t.state = low ? TH_ALARM_LOW : high ? TH_ALARM_HIGH : t.heaterOn ? TH_HEATING : t.fanPct ? TH_COOLING : TH_IDLE;
@@ -583,6 +585,10 @@ void Mock::thermoTick(uint32_t nowMs) {
                     break;
                 case ThermoPending::Heater:
                     if (t.autoMode) gui::toast("Termostat odrzucił: ręczne sterowanie tylko w trybie Serwis", Sev::P2);
+                    else if (t.pendingHeater && (thermoSensorLatched_ || !t.tempValid))
+                        gui::toast("Termostat odrzucił: awaria czujnika — grzałka zablokowana", Sev::P2);
+                    else if (t.pendingHeater && t.tempX100 > 2750)
+                        gui::toast("Termostat odrzucił: temperatura powyżej progu alarmu — grzałka zablokowana", Sev::P2);
                     else t.heaterOn = t.pendingHeater;
                     break;
                 case ThermoPending::Fan:

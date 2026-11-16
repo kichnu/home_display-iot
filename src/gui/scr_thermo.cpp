@@ -180,7 +180,7 @@ void resetOk() {
 void onReset(lv_event_t*) {
     if (!ctl() || busy() || !(tv().alarms & THERMO_AL_SENSOR_FAULT)) return;
     confirm("Kasować awarię czujnika?",
-            "Grzałka i wentylator są wyłączone do skasowania. Kasuj dopiero po sprawdzeniu czujnika i kabla — "
+            "Grzałka jest wyłączona do skasowania (w Auto także wentylator). Kasuj dopiero po sprawdzeniu czujnika i kabla — "
             "jeśli czujnik dalej nie działa, awaria wróci przy następnym pomiarze.",
             "Kasuj", resetOk);
 }
@@ -318,7 +318,7 @@ void refreshControls() {
     else lv_label_set_text(s_fanStepVal, "– %");
 
     if (!on) lv_label_set_text(s_manualHint, "");
-    else if (!t.controls) lv_label_set_text(s_manualHint, "Sterowanie z panelu w kolejnym etapie");
+    else if (!t.controls) lv_label_set_text(s_manualHint, "Sterowanie niedostępne (brak klucza w tym buildzie)");
     else if (t.autoMode) lv_label_set_text(s_manualHint, "Ręczne sterowanie tylko w trybie Serwis");
     else lv_label_set_text(s_manualHint, "");
 }

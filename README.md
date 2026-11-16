@@ -13,9 +13,11 @@ top-off screen with live data, node alarms on the alarm strip, "brak łącznośc
 Controls on the top-off screen: Auto / Serwis, manual portions (bargraph 1–10 + ON, STOP during the
 session), "Kasuj alarm" and the daily limit (both with a dialog). A tapped control shows "sent" (outline)
 until the node's ACK and next status; the result (or the node's refusal) comes as a toast.
-Thermostat node (stages T1–T3, `docs/PLAN_TERMOSTAT.md`): status received over ESP-NOW, tile "Termostat"
-and the thermostat screen with live data (read only until T5), node alarms on the alarm strip, "brak
-łączności" after 15 s without a status.
+Thermostat node (stages T1–T5, `docs/PLAN_TERMOSTAT.md`): status received over ESP-NOW, tile "Termostat"
+and the thermostat screen with live data, node alarms on the alarm strip, "brak łączności" after 15 s
+without a status. Controls: Auto / Serwis, "Wycisz alarm" (TEMP_LOW / TEMP_HIGH), "Kasuj awarię czujnika"
+(dialog), manual heater / fan and fan ▼▲ 5 % in Service Mode. The thermostat checks every rule itself
+(Service Mode, sensor fault, TEMP_HIGH threshold); a refusal or the result comes as a toast.
 
 ## Build / flash
 

@@ -165,7 +165,7 @@ enum class ThermoPending : uint8_t { None, Mode, Mute, SensorReset, Heater, Fan 
 struct ThermoView {
     bool present;            // a status was ever received
     bool online;             // status within the last 15 s
-    bool controls;           // commands available (panel: from stage T5; until then read only)
+    bool controls;           // commands available (panel: thermostat key derived)
     time_t lastSeen;
     char name[32];
     uint8_t status;          // TopoffStatus values (TS_*)
